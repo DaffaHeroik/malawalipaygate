@@ -1,0 +1,21 @@
+<section class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-title">
+      <span class="badge badge--danger"><%= errorCode || 500 %></span>
+      <h1 style="margin-top:12px">Terjadi kesalahan</h1>
+      <p><%= errorMessage || 'Sistem tidak dapat memproses permintaan ini.' %></p>
+    </div>
+
+    <div class="row" style="justify-content:center">
+      <a class="btn btn--primary" href="/dashboard">Ke Dashboard</a>
+      <a class="btn btn--secondary" href="/">Beranda</a>
+    </div>
+
+    <% if (errorStack) { %>
+      <details>
+        <summary class="muted text-sm" style="cursor:pointer">Detail teknis</summary>
+        <pre class="code-inline" style="margin-top:8px;max-height:220px"><%= errorStack %></pre>
+      </details>
+    <% } %>
+  </div>
+</section>

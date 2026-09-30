@@ -1,0 +1,188 @@
+<div class="page-header">
+  <div>
+    <a class="row row-tight text-sm" style="gap:6px" href="/projects">
+      <%- include('../../../partials/icon', { name: 'arrowLeft' }) %>
+      <span><%= order.project?.name || 'Project' %></span>
+    </a>
+    <h1 class="order-hero__id" style="margin-top:8px"><%= order.id %></h1>
+    <p class="page-header__sub">
+      <%= order.reference ? `Reference ${order.reference}` : 'Tanpa reference' %>
+      &middot; dibuat <%= helpers.formatDateTime(order.createdAt) %>
+    </p>
+  </div>
+
+  <div class="page-header__actions">
+    <span class="order-hero__status" data-tone="<%= statusMeta.tone %>"><%= statusMeta.label %></span>
+  </div>
+</div>
+
+<div class="split split--even">
+  <%# ── Detail order ── %>
+  <section class="card">
+    <div class="card__head">
+      <div class="card__head-title">
+        <h2>Detail</h2>
+        <p>Ringkasan nominal dan status order.</p>
+      </div>
+      <span class="badge badge--<%= order.status %> badge--dot"><%= statusMeta.label %></span>
+    </div>
+
+    <div class="card__body card__body--flush">
+      <div class="kv" style="border:0;border-radius:0">
+        <div class="kv__row">
+          <span class="kv__key">Project</span>
+          <span class="kv__val"><%= order.project?.name || '-' %></span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Mode</span>
+          <span class="kv__val"><%= String(order.mode || 'live').toUpperCase() %></span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Sumber Pembayaran</span>
+          <span class="kv__val"><%= String(constants.PROVIDER_LABEL[order.provider] || order.provider).toUpperCase() %></span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Harga</span>
+          <span class="kv__val"><%= helpers.formatRupiah(order.baseAmount) %></span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Fee <%= order.feePercent %>&percnt;</span>
+          <span class="kv__val"><%= helpers.formatRupiah(order.feeAmount) %></span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Kode unik</span>
+          <span class="kv__val"><%= order.uniqueCode %></span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Total bayar</span>
+          <span class="kv__val" style="color:var(--primary)"><%= helpers.formatRupiah(order.payAmount) %></span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Dibuat</span>
+          <span class="kv__val"><%= helpers.formatDateTime(order.createdAt) %></span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Expired</span>
+          <span class="kv__val"><%= helpers.formatDateTime(order.expiresAt) %></span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Paid</span>
+          <span class="kv__val"><%= order.paidAt ? helpers.formatDateTime(order.paidAt) : '-' %></span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Checkout URL</span>
+          <span class="kv__val kv__val--mono">
+            <a href="<%= order.checkoutUrl %>" target="_blank" rel="noopener"><%= order.checkoutUrl %></a>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card__foot">
+      <span class="muted text-sm">Nominal final yang wajib dibayar customer.</span>
+      <% if (order.status === 'pending') { %>
+        <form method="post" action="/orders/<%= order.id %>/cancel">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn--danger btn--sm" type="submit" data-confirm="Batalkan order ini?">
+            <%- include('../../../partials/icon', { name: 'close' }) %>
+            <span>Batalkan Order</span>
+          </button>
+        </form>
+      <% } else { %>
+        <span class="badge badge--<%= order.status %>"><%= statusMeta.label %></span>
+      <% } %>
+    </div>
+  </section>
+
+  <%# ── Sidebar: QRIS + pembayaran + webhook ── %>
+  <div class="stack">
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <h2>QRIS Dinamis</h2>
+          <p>Total <strong><%= helpers.formatRupiah(order.payAmount) %></strong></p>
+        </div>
+      </div>
+      <div class="card__body" style="justify-items:center">
+        <div class="qris-preview">
+          <img src="<%= qrDataUrl %>" alt="QRIS dinamis untuk <%= order.id %>" width="200" height="200">
+        </div>
+        <a class="btn btn--secondary btn--sm" href="<%= qrDataUrl %>" download="qris-<%= order.id %>.png">
+          <%- include('../../../partials/icon', { name: 'download' }) %>
+          <span>Unduh QRIS</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <h2>Detail Pembayaran</h2>
+        </div>
+      </div>
+      <div class="card__body card__body--tight">
+        <% if (order.matchedTransaction) { %>
+          <div class="kv">
+            <div class="kv__row">
+              <span class="kv__key">Transaction ID</span>
+              <span class="kv__val kv__val--mono"><%= order.matchedTransaction.providerTransactionId %></span>
+            </div>
+            <div class="kv__row">
+              <span class="kv__key">Nominal cocok</span>
+              <span class="kv__val"><%= helpers.formatRupiah(order.matchedTransaction.amount) %></span>
+            </div>
+            <div class="kv__row">
+              <span class="kv__key">Waktu transaksi</span>
+              <span class="kv__val"><%= helpers.formatDateTime(order.matchedTransaction.occurredAt) %></span>
+            </div>
+            <div class="kv__row">
+              <span class="kv__key">Diklaim</span>
+              <span class="kv__val"><%= helpers.formatDateTime(order.matchedTransaction.claimedAt) %></span>
+            </div>
+          </div>
+        <% } else { %>
+          <div class="empty-state">
+            <span class="empty-state__icon"><%- include('../../../partials/icon', { name: 'search' }) %></span>
+            <h3>Belum ada transaksi yang cocok</h3>
+            <p>Pencocokan berjalan otomatis saat pembayaran dengan nominal tepat diterima.</p>
+          </div>
+        <% } %>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <h2>Webhook</h2>
+        </div>
+      </div>
+      <div class="card__body card__body--tight">
+        <% if (order.webhookDeliveries.length) { %>
+          <div class="stack-sm">
+            <% order.webhookDeliveries.forEach((delivery) => { %>
+              <div class="device">
+                <span class="device__icon"><%- include('../../../partials/icon', { name: 'webhook' }) %></span>
+                <span class="grow">
+                  <span class="strong text-sm mono"><%= delivery.event %></span>
+                  <span class="muted text-xs" style="display:block">
+                    <%= delivery.attempts %>x percobaan &middot; HTTP <%= delivery.responseStatus %>
+                    <% if (delivery.deliveredAt) { %> &middot; <%= helpers.formatDateTime(delivery.deliveredAt) %><% } %>
+                  </span>
+                </span>
+                <span class="badge badge--<%= delivery.responseStatus >= 200 && delivery.responseStatus < 300 ? 'success' : 'danger' %>">
+                  <%= delivery.responseStatus %>
+                </span>
+              </div>
+            <% }) %>
+          </div>
+        <% } else { %>
+          <div class="empty-state">
+            <span class="empty-state__icon"><%- include('../../../partials/icon', { name: 'webhook' }) %></span>
+            <h3>Belum ada pengiriman webhook</h3>
+            <p>Event dikirim setelah order berstatus paid atau saat Anda menekan Kirim Test.</p>
+          </div>
+        <% } %>
+      </div>
+    </section>
+  </div>
+</div>

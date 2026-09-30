@@ -1,0 +1,10 @@
+<button
+  class="theme-toggle<%= typeof className !== 'undefined' && className ? ` ${className}` : '' %>"
+  type="button"
+  data-theme-toggle
+  aria-label="Ganti tema"
+  title="Ganti tema"
+>
+  <%- include('icon', { name: 'moon', className: 'icon-moon' }) %>
+  <%- include('icon', { name: 'sun', className: 'icon-sun' }) %>
+</button>

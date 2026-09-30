@@ -1,0 +1,179 @@
+<%
+  const status = constants.CONNECTION_STATUS[connection?.status || 'disconnected'];
+%>
+
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">Pembayaran</span>
+    <h1>Shopee Partner</h1>
+    <p class="page-header__sub">
+      Hubungkan Shopee Partner untuk deteksi pembayaran otomatis. QRIS dan pengaturan transaksi
+      dikelola dari menu QRIS.
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <span class="badge badge--<%= status.tone === 'success' ? 'success' : status.tone === 'danger' ? 'danger' : 'muted' %> badge--dot">
+      Status: <%= status.label %>
+    </span>
+  </div>
+</div>
+
+<div class="stack">
+  <div class="row">
+    <a class="support-link grow" href="/tutorial?bagian=shopee">
+      <%- include('../../partials/icon', { name: 'tutorial' }) %>
+      <span>
+        <strong>Wajib Baca Tutorial Shopee Partner</strong><br>
+        <span class="muted text-sm">Cara mengambil token, memasang QRIS, dan penanganan token expired.</span>
+      </span>
+      <%- include('../../partials/icon', { name: 'arrowRight', className: 'arrow' }) %>
+    </a>
+  </div>
+
+  <div class="notice notice--danger">
+    <div class="notice__head">
+      <%- include('../../partials/icon', { name: 'alert' }) %>
+      <span>Baca Risiko Selengkapnya</span>
+    </div>
+    <p>
+      Integrasi ini memakai sesi portal merchant, bukan API publik resmi. Token dapat kedaluwarsa
+      atau berhenti berlaku bila sesi berubah. Gunakan hanya akun merchant yang Anda miliki atau
+      yang memang Anda berwenang kelola.
+    </p>
+    <div>
+      <a class="btn btn--secondary btn--sm" href="/tutorial?bagian=shopee">Baca Panduan</a>
+    </div>
+  </div>
+</div>
+
+<div class="split">
+  <section class="card">
+    <div class="card__head">
+      <div class="card__head-title">
+        <h2>Koneksi Akun Shopee</h2>
+        <p>Kredensial koneksi Shopee Partner disimpan terenkripsi.</p>
+      </div>
+      <%- include('../../partials/icon', { name: 'lock' }) %>
+    </div>
+
+    <form method="post" action="/shopee/connect" class="card__body" data-submit-once>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+      <label class="field">
+        <span class="field__label">Token Koneksi Shopee <span class="req">*</span></span>
+        <textarea
+          class="textarea"
+          name="token"
+          rows="4"
+          placeholder="Tempel nilai cookie __shopee_partner_website_x_token_live di sini"
+          required
+        ></textarea>
+        <span class="field__hint">
+          Ambil token dari
+          <a href="https://partner.shopee.co.id" target="_blank" rel="noopener">partner.shopee.co.id</a>
+          sesuai panduan di Tutorial. Token tidak ditampilkan kembali setelah disimpan.
+        </span>
+      </label>
+
+      <% if (connection?.hasCredential) { %>
+        <div class="detection-panel">
+          <div class="detection-row">
+            <span class="detection-row__label">Token tersimpan</span>
+            <span class="mono text-xs"><%= connection.tokenPreview %></span>
+          </div>
+          <% if (connection.lastError) { %>
+            <div class="alert alert--danger">
+              <%- include('../../partials/icon', { name: 'alert' }) %>
+              <div class="alert__body">
+                <span class="alert__title">Error terakhir</span>
+                <%= connection.lastError %>
+              </div>
+            </div>
+          <% } %>
+        </div>
+      <% } %>
+
+      <div class="row">
+        <button class="btn btn--primary" type="submit">
+          <%- include('../../partials/icon', { name: 'check' }) %>
+          <span>Simpan &amp; Tes Koneksi</span>
+        </button>
+      </div>
+    </form>
+
+    <div class="card__foot">
+      <span class="muted text-sm">Sudah menyimpan token? Uji ulang kapan saja.</span>
+      <div class="row row-tight">
+        <form method="post" action="/shopee/test">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn--secondary btn--sm" type="submit">
+            <%- include('../../partials/icon', { name: 'refresh' }) %>
+            <span>Tes Koneksi</span>
+          </button>
+        </form>
+
+        <% if (connection?.hasCredential) { %>
+          <form method="post" action="/shopee/disconnect">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="btn btn--ghost btn--sm" type="submit" data-confirm="Putuskan koneksi Shopee Partner?">
+              <span>Putuskan</span>
+            </button>
+          </form>
+        <% } %>
+      </div>
+    </div>
+  </section>
+
+  <div class="sticky-col">
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <h2>Status Integrasi</h2>
+          <p>Ringkasan kondisi koneksi Shopee Partner.</p>
+        </div>
+      </div>
+
+      <div class="card__body">
+        <div class="kv">
+          <div class="kv__row">
+            <span class="kv__key">Koneksi Shopee</span>
+            <span class="kv__val">
+              <span class="status-line">
+                <span class="status-dot status-dot--<%= status.tone === 'success' ? 'success' : status.tone === 'danger' ? 'danger' : 'warn' %>"></span>
+                <%= status.label %>
+              </span>
+            </span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Terakhir tes</span>
+            <span class="kv__val"><%= connection?.lastTestAt ? helpers.formatDateTime(connection.lastTestAt) : '-' %></span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">QRIS aktif</span>
+            <span class="kv__val">
+              <%= detection.providerLabel || 'Belum dipasang' %>
+              <% if (detection.provider === 'shopee') { %>
+                <span class="badge badge--primary">Dipakai</span>
+              <% } %>
+            </span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Deteksi pembayaran</span>
+            <span class="kv__val">
+              <span class="badge badge--<%= detection.ready ? 'success' : 'warn' %>">
+                <%= detection.ready ? 'Siap' : 'Belum siap' %>
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <a class="btn btn--secondary btn--block" href="/qris">
+          <%- include('../../partials/icon', { name: 'qris' }) %>
+          <span>Kelola QRIS &amp; Pengaturan</span>
+        </a>
+      </div>
+    </section>
+
+    <%- include('../../partials/support-link') %>
+  </div>
+</div>

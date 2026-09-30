@@ -1,0 +1,23 @@
+<%
+  // samples: { curl: '…', js: '…', php: '…', python: '…' }
+  const codeLabels = { curl: 'cURL', js: 'Node.js', php: 'PHP', python: 'Python' };
+  const codeKeys = Object.keys(samples || {});
+  const codeGroup = typeof codeGroupName !== 'undefined' ? codeGroupName : 'docs-lang';
+  const codeDefault = codeKeys[0] || 'curl';
+%>
+<div class="code" data-code data-tab-group="<%= codeGroup %>" data-tab-default="<%= codeDefault %>">
+  <div class="code__head">
+    <div class="code__tabs">
+      <% codeKeys.forEach((k) => { %>
+        <button class="code__tab" type="button" data-tab="<%= k %>"><%= codeLabels[k] || k %></button>
+      <% }) %>
+    </div>
+    <button class="code__copy" type="button">
+      <%- include('icon', { name: 'copy', strokeWidth: 1.9 }) %>
+      <span>Copy</span>
+    </button>
+  </div>
+  <% codeKeys.forEach((k) => { %>
+    <pre data-tab-panel="<%= k %>"><code><%= samples[k] %></code></pre>
+  <% }) %>
+</div>

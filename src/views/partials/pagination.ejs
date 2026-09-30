@@ -1,0 +1,57 @@
+<%
+  const { total, page, pages, from, to } = pagination;
+  const base = typeof baseUrl !== 'undefined' ? baseUrl : '';
+  const joiner = base.includes('?') ? '&' : '?';
+  const buildUrl = (targetPage) => `${base}${joiner}page=${targetPage}`;
+
+  // tampilkan maksimal 5 nomor halaman di sekitar halaman aktif
+  const windowSize = 2;
+  const start = Math.max(1, page - windowSize);
+  const end = Math.min(pages, page + windowSize);
+  const numbers = [];
+  for (let i = start; i <= end; i += 1) numbers.push(i);
+%>
+
+<div class="pagination">
+  <span>
+    <% if (total === 0) { %>
+      Tidak ada data
+    <% } else { %>
+      <strong><%= from %>-<%= to %></strong> dari <strong><%= total %></strong> order
+    <% } %>
+  </span>
+
+  <% if (pages > 1) { %>
+    <nav class="pagination__pages" aria-label="Navigasi halaman">
+      <a
+        class="pagination__page<%= page <= 1 ? ' is-disabled' : '' %>"
+        href="<%= buildUrl(Math.max(1, page - 1)) %>"
+        aria-label="Halaman sebelumnya"
+      >&lsaquo;</a>
+
+      <% if (start > 1) { %>
+        <a class="pagination__page" href="<%= buildUrl(1) %>">1</a>
+        <% if (start > 2) { %><span class="dim">&hellip;</span><% } %>
+      <% } %>
+
+      <% numbers.forEach((n) => { %>
+        <a
+          class="pagination__page<%= n === page ? ' is-active' : '' %>"
+          href="<%= buildUrl(n) %>"
+          <%= n === page ? 'aria-current="page"' : '' %>
+        ><%= n %></a>
+      <% }) %>
+
+      <% if (end < pages) { %>
+        <% if (end < pages - 1) { %><span class="dim">&hellip;</span><% } %>
+        <a class="pagination__page" href="<%= buildUrl(pages) %>"><%= pages %></a>
+      <% } %>
+
+      <a
+        class="pagination__page<%= page >= pages ? ' is-disabled' : '' %>"
+        href="<%= buildUrl(Math.min(pages, page + 1)) %>"
+        aria-label="Halaman berikutnya"
+      >&rsaquo;</a>
+    </nav>
+  <% } %>
+</div>

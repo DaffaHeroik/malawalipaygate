@@ -1,0 +1,203 @@
+<%
+  const status = constants.CONNECTION_STATUS[connection?.status || 'disconnected'];
+%>
+
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">Pembayaran</span>
+    <h1>GoPay Merchant</h1>
+    <p class="page-header__sub">
+      Hubungkan akun GoPay Merchant/GoBiz untuk deteksi pembayaran otomatis. QRIS dan pengaturan
+      transaksi dikelola dari menu QRIS.
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <span class="badge badge--<%= status.tone === 'success' ? 'success' : status.tone === 'danger' ? 'danger' : 'muted' %> badge--dot">
+      Status: <%= status.label %>
+    </span>
+  </div>
+</div>
+
+<div class="stack">
+  <div class="notice notice--danger">
+    <div class="notice__head">
+      <%- include('../../partials/icon', { name: 'alert' }) %>
+      <span>Rekomendasi Khusus GoPay</span>
+    </div>
+    <p>
+      Fee atau Nominal Unik yang muncul berulang dapat membentuk pola transaksi yang berisiko
+      dianggap mencurigakan pada akun GoPay Merchant. Untuk GoPay, biarkan <strong>Fee</strong> dan
+      <strong>Kode Unik</strong> tetap OFF dan gunakan <strong>Mode Hybrid</strong>.
+    </p>
+    <div>
+      <a class="btn btn--secondary btn--sm" href="/tutorial?bagian=gopay-rekomendasi">Baca Rekomendasi Lengkap</a>
+    </div>
+  </div>
+
+  <div class="row">
+    <a class="support-link grow" href="/tutorial?bagian=gopay">
+      <%- include('../../partials/icon', { name: 'tutorial' }) %>
+      <span>
+        <strong>Panduan Koneksi GoPay Merchant</strong><br>
+        <span class="muted text-sm">Nomor merchant, OTP, tes koneksi, dan penanganan sesi tidak valid.</span>
+      </span>
+      <%- include('../../partials/icon', { name: 'arrowRight', className: 'arrow' }) %>
+    </a>
+  </div>
+</div>
+
+<div class="split">
+  <section class="card">
+    <div class="card__head">
+      <div class="card__head-title">
+        <h2>Koneksi Akun GoPay</h2>
+        <p>Login menggunakan nomor GoPay Merchant/GoBiz dan OTP.</p>
+      </div>
+      <%- include('../../partials/icon', { name: 'lock' }) %>
+    </div>
+
+    <form method="post" action="/gopay/otp" class="card__body" data-submit-once>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+      <label class="field">
+        <span class="field__label">Nomor Handphone <span class="muted">(terdaftar GoPay)</span> <span class="req">*</span></span>
+        <input
+          class="input"
+          type="tel"
+          name="phone"
+          value="<%= phone %>"
+          placeholder="08xxxxxxxxxx"
+          inputmode="numeric"
+          required
+        >
+        <span class="field__hint">Nomor harus terdaftar sebagai GoPay Merchant/GoBiz.</span>
+      </label>
+
+      <div>
+        <button class="btn btn--secondary" type="submit">
+          <%- include('../../partials/icon', { name: 'phone' }) %>
+          <span>Kirim OTP</span>
+        </button>
+      </div>
+    </form>
+
+    <form method="post" action="/gopay/verify" class="card__body" data-submit-once>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="phone" value="<%= phone %>">
+
+      <label class="field">
+        <span class="field__label">Kode OTP <span class="req">*</span></span>
+        <input
+          class="input"
+          type="text"
+          name="otp"
+          placeholder="6 digit"
+          inputmode="numeric"
+          maxlength="6"
+          pattern="\d{6}"
+          required
+          <%= otpSent ? '' : 'disabled' %>
+        >
+        <span class="field__hint">
+          <% if (otpSent) { %>
+            OTP sudah dikirim ke <strong><%= phone %></strong>. Masukkan 6 digit kode.
+          <% } else { %>
+            Kirim OTP terlebih dahulu untuk membuka kolom ini.
+          <% } %>
+        </span>
+      </label>
+
+      <div class="alert alert--info">
+        <%- include('../../partials/icon', { name: 'info' }) %>
+        <div class="alert__body">
+          Setelah OTP berhasil, <%= brand.name %> menyimpan kredensial koneksi secara terenkripsi
+          untuk membantu mengenali pembayaran.
+        </div>
+      </div>
+
+      <button class="btn btn--primary" type="submit" <%= otpSent ? '' : 'disabled' %>>
+        <%- include('../../partials/icon', { name: 'check' }) %>
+        <span>Verifikasi &amp; Hubungkan</span>
+      </button>
+    </form>
+
+    <div class="card__foot">
+      <span class="muted text-sm">Sudah terhubung? Uji ulang kapan saja.</span>
+      <div class="row row-tight">
+        <form method="post" action="/gopay/test">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn--secondary btn--sm" type="submit">
+            <%- include('../../partials/icon', { name: 'refresh' }) %>
+            <span>Tes Koneksi</span>
+          </button>
+        </form>
+
+        <% if (connection?.hasCredential) { %>
+          <form method="post" action="/gopay/disconnect">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="btn btn--ghost btn--sm" type="submit" data-confirm="Putuskan koneksi GoPay Merchant?">
+              <span>Putuskan</span>
+            </button>
+          </form>
+        <% } %>
+      </div>
+    </div>
+  </section>
+
+  <div class="sticky-col">
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <h2>Status Integrasi</h2>
+          <p>Ringkasan kondisi koneksi GoPay Merchant.</p>
+        </div>
+      </div>
+
+      <div class="card__body">
+        <div class="kv">
+          <div class="kv__row">
+            <span class="kv__key">Koneksi GoPay</span>
+            <span class="kv__val">
+              <span class="status-line">
+                <span class="status-dot status-dot--<%= status.tone === 'success' ? 'success' : status.tone === 'danger' ? 'danger' : 'warn' %>"></span>
+                <%= status.label %>
+              </span>
+            </span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Nomor Merchant</span>
+            <span class="kv__val mono"><%= connection?.merchantPhone || '-' %></span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Terakhir tes</span>
+            <span class="kv__val"><%= connection?.lastTestAt ? helpers.formatDateTime(connection.lastTestAt) : '-' %></span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">QRIS aktif</span>
+            <span class="kv__val">
+              <%= detection.providerLabel || 'Belum dipasang' %>
+              <% if (detection.provider === 'gopay') { %>
+                <span class="badge badge--primary">Dipakai</span>
+              <% } %>
+            </span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Deteksi pembayaran</span>
+            <span class="kv__val">
+              <span class="badge badge--<%= detection.ready ? 'success' : 'warn' %>">
+                <%= detection.ready ? 'Siap' : 'Belum siap' %>
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <a class="btn btn--secondary btn--block" href="/qris">
+          <%- include('../../partials/icon', { name: 'qris' }) %>
+          <span>Kelola QRIS &amp; Pengaturan</span>
+        </a>
+      </div>
+    </section>
+
+    <%- include('../../partials/support-link') %>
+  </div>
+</div>

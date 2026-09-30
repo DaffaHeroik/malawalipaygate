@@ -1,0 +1,316 @@
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">Pemantau Pembayaran</span>
+    <h1><%= brand.name %> Listener</h1>
+    <p class="page-header__sub">
+      Aplikasi Android pendamping <%= brand.name %> untuk membantu mengenali pembayaran dari
+      notifikasi merchant secara otomatis.
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a class="btn btn--secondary" href="/qris">
+      <%- include('../../partials/icon', { name: 'qris' }) %>
+      <span>Kelola QRIS</span>
+    </a>
+  </div>
+</div>
+
+<section class="metric-grid">
+  <article class="metric">
+    <div class="metric__top">
+      <span class="metric__label">Status Listener</span>
+      <span class="metric__icon"><%- include('../../partials/icon', { name: 'broadcast' }) %></span>
+    </div>
+    <div>
+      <div class="metric__value" style="font-size:var(--fs-lg)">
+        <span class="status-line">
+          <span class="status-dot status-dot--<%= summary.connected ? 'success' : 'warn' %>"></span>
+          <%= summary.connected ? 'Terhubung' : 'Belum terhubung' %>
+        </span>
+      </div>
+      <span class="metric__sub"><%= summary.deviceCount %> perangkat terdaftar</span>
+    </div>
+  </article>
+
+  <article class="metric">
+    <div class="metric__top">
+      <span class="metric__label">Perangkat</span>
+      <span class="metric__icon"><%- include('../../partials/icon', { name: 'phone' }) %></span>
+    </div>
+    <div>
+      <div class="metric__value"><%= summary.deviceCount %></div>
+      <span class="metric__sub"><%= summary.deviceCount ? 'Aktif menerima notifikasi' : 'Belum ada perangkat aktif' %></span>
+    </div>
+  </article>
+
+  <article class="metric">
+    <div class="metric__top">
+      <span class="metric__label">QRIS Aktif</span>
+      <span class="metric__icon"><%- include('../../partials/icon', { name: 'qris' }) %></span>
+    </div>
+    <div>
+      <div class="metric__value" style="font-size:var(--fs-lg)"><%= summary.qrisProviderLabel || 'Belum dipasang' %></div>
+      <span class="metric__sub">Sumber pembayaran mengikuti QRIS aktif</span>
+    </div>
+  </article>
+
+  <article class="metric">
+    <div class="metric__top">
+      <span class="metric__label">Mode Deteksi</span>
+      <span class="metric__icon"><%- include('../../partials/icon', { name: 'bolt' }) %></span>
+    </div>
+    <div>
+      <div class="metric__value" style="font-size:var(--fs-lg)">
+        <span class="badge badge--<%= detection.ready ? 'success' : 'warn' %>">
+          <%= detection.ready ? 'Siap' : 'Belum siap' %>
+        </span>
+      </div>
+      <span class="metric__sub">Pembayaran otomatis</span>
+    </div>
+  </article>
+
+  <article class="metric">
+    <div class="metric__top">
+      <span class="metric__label">Sumber APK</span>
+      <span class="metric__icon"><%- include('../../partials/icon', { name: 'list' }) %></span>
+    </div>
+    <div>
+      <div class="metric__value"><%= summary.sourceCount %></div>
+      <span class="metric__sub">Aplikasi pembayaran diizinkan</span>
+    </div>
+  </article>
+</section>
+
+<div class="split">
+  <div class="stack">
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <h2>Punya pertanyaan?</h2>
+          <p>Nggak mau pakai HP sebagai sumber deteksi?</p>
+        </div>
+      </div>
+      <div class="card__body">
+        <div class="notice notice--info">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'bulb' }) %>
+            <span>Nggak mau pakai HP?</span>
+          </div>
+          <p>
+            Untuk QRIS ShopeePay / GoPay, pembayaran dapat terdeteksi otomatis tanpa aplikasi Android
+            selama koneksi merchant tersedia. Atur QRIS dan koneksi pembayaran dari dashboard
+            <%= brand.name %>.
+          </p>
+        </div>
+
+        <div class="row">
+          <a class="btn btn--secondary btn--sm" href="/shopee">Hubungkan Shopee</a>
+          <a class="btn btn--secondary btn--sm" href="/gopay">Hubungkan GoPay</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <span class="section-label">Cara Menghubungkan</span>
+          <h2>Aktif dalam beberapa langkah</h2>
+        </div>
+      </div>
+
+      <div class="card__body">
+        <div class="stepper">
+          <div class="step">
+            <span class="step__num">1</span>
+            <span class="step__body">
+              <span class="step__title">Download &amp; install APK</span>
+              <span class="step__desc">Gunakan APK resmi <%= brand.name %> Listener dari halaman ini.</span>
+            </span>
+          </div>
+          <div class="step">
+            <span class="step__num">2</span>
+            <span class="step__body">
+              <span class="step__title">Login akun <%= brand.name %></span>
+              <span class="step__desc">Tidak perlu copy Device ID, secret, API key, atau server URL secara manual.</span>
+            </span>
+          </div>
+          <div class="step">
+            <span class="step__num">3</span>
+            <span class="step__body">
+              <span class="step__title">Aktifkan Notification Access</span>
+              <span class="step__desc">Izinkan Listener membaca notifikasi aplikasi pembayaran yang Anda pilih.</span>
+            </span>
+          </div>
+          <div class="step">
+            <span class="step__num">4</span>
+            <span class="step__body">
+              <span class="step__title">Pilih sumber pembayaran</span>
+              <span class="step__desc">Contoh DANA, Shopee Partner, GoPay Merchant, BCA Merchant, dan sumber lain yang digunakan.</span>
+            </span>
+          </div>
+          <div class="step">
+            <span class="step__num">5</span>
+            <span class="step__body">
+              <span class="step__title">Biarkan berjalan di latar belakang</span>
+              <span class="step__desc"><%= brand.name %> menerima status koneksi dan informasi pembayaran secara otomatis.</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="notice">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'shield' }) %>
+            <span>Privasi</span>
+          </div>
+          <p>
+            Aktifkan hanya aplikasi sumber pembayaran yang sesuai dengan QRIS merchant Anda agar
+            transaksi dapat dikenali dengan tepat.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <h2>Status Provider QRIS Aktif</h2>
+        </div>
+        <a class="btn btn--ghost btn--sm" href="/qris">
+          <span>Kelola QRIS</span>
+          <%- include('../../partials/icon', { name: 'chevronRight' }) %>
+        </a>
+      </div>
+
+      <div class="card__body card__body--tight">
+        <div class="detection-panel">
+          <div class="row row-tight">
+            <span class="avatar avatar--soft"><%= detection.providerLabel ? detection.providerLabel.charAt(0) : 'S' %></span>
+            <span class="grow">
+              <strong style="display:block"><%= detection.providerLabel || 'Belum ada provider' %></strong>
+              <span class="muted text-sm">Provider QRIS aktif</span>
+            </span>
+            <span class="badge badge--<%= detection.ready ? 'success' : 'warn' %>">
+              <%= detection.ready ? 'Siap' : 'Belum siap' %>
+            </span>
+          </div>
+
+          <div class="detection-row">
+            <span class="detection-row__label">Koneksi merchant</span>
+            <span class="status-line">
+              <span class="status-dot status-dot--<%= detection.merchantConnected ? 'success' : 'warn' %>"></span>
+              <%= detection.merchantConnected ? 'Aktif' : 'Tidak aktif' %>
+            </span>
+          </div>
+
+          <div class="detection-row">
+            <span class="detection-row__label">Listener</span>
+            <span class="status-line">
+              <span class="status-dot status-dot--<%= detection.listenerReady ? 'success' : 'warn' %>"></span>
+              <%= detection.listenerReady ? 'Aktif' : 'Tidak aktif' %>
+            </span>
+          </div>
+
+          <% if (detection.note) { %>
+            <p class="preview-note"><%= detection.note %></p>
+          <% } %>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="sticky-col">
+    <section class="card">
+      <div class="card__body">
+        <div class="apk-card">
+          <span class="badge badge--muted">Official</span>
+          <strong><%= brand.name %> Listener</strong>
+          <span class="muted text-sm">Backup Payment Monitor</span>
+
+          <div class="apk-card__meta">
+            <span>Versi <b><%= app.version %></b></span>
+            <span>Minimum <b><%= app.minAndroid %></b></span>
+            <span>Ukuran <b><%= app.sizeMb %> MB</b></span>
+          </div>
+
+          <a class="btn btn--primary btn--block" href="#download">
+            <%- include('../../partials/icon', { name: 'download' }) %>
+            <span>Download <%= brand.name %> Listener</span>
+          </a>
+
+          <span class="text-xs muted">
+            Install file APK lalu login memakai email/password akun <%= brand.name %> Anda.
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <h2>Perangkat Terhubung</h2>
+        </div>
+        <span class="badge badge--muted"><%= devices.length %> perangkat</span>
+      </div>
+
+      <div class="card__body card__body--tight">
+        <% if (!devices.length) { %>
+          <div class="empty-state">
+            <span class="empty-state__icon"><%- include('../../partials/icon', { name: 'phone' }) %></span>
+            <h3>Belum ada perangkat</h3>
+            <p>Install APK dan login dengan akun <%= brand.name %> ini. Perangkat akan muncul otomatis setelah login.</p>
+          </div>
+        <% } else { %>
+          <div class="device-list">
+            <% devices.forEach((device) => { %>
+              <div class="device">
+                <span class="device__icon"><%- include('../../partials/icon', { name: 'phone' }) %></span>
+                <span class="grow">
+                  <strong class="text-sm" style="display:block"><%= device.name %></strong>
+                  <span class="muted text-xs">
+                    <%= device.model %> &middot; Android <%= device.androidVersion %> &middot; v<%= device.appVersion %>
+                  </span>
+                  <span class="muted text-xs" style="display:block">
+                    Terakhir aktif <%= helpers.timeAgo(device.lastSeenAt) %>
+                    <% if (device.tokenPreview) { %> &middot; token <code><%= device.tokenPreview %></code><% } %>
+                    <% if (device.pushCount) { %> &middot; <%= device.pushCount %> push<% } %>
+                  </span>
+                </span>
+                <span class="badge badge--<%= device.notificationAccess ? 'success' : 'warn' %>">
+                  <%= device.notificationAccess ? 'Aktif' : 'Izin kurang' %>
+                </span>
+                <form method="post" action="/listener/devices/<%= device.deviceId %>/revoke" data-confirm="Cabut perangkat ini? Token Listener perangkat langsung tidak berlaku.">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <button type="submit" class="btn btn--danger btn--sm">Cabut</button>
+                </form>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <h2>Sumber Pembayaran</h2>
+          <p>Provider yang bisa dipantau lewat notifikasi.</p>
+        </div>
+      </div>
+      <div class="card__body card__body--tight">
+        <div class="provider-list">
+          <% providers.forEach((provider) => { %>
+            <%
+              const enabled = devices.some((d) => d.enabledSources.includes(provider.key));
+              const isActiveProvider = detection.provider === provider.key;
+            %>
+            <div class="provider-item<%= enabled ? ' is-active' : '' %>">
+              <%- include('../../partials/icon', { name: enabled ? 'check' : 'dot' }) %>
+              <span class="grow"><%= provider.label %></span>
+              <% if (isActiveProvider) { %><span class="badge badge--primary">QRIS</span><% } %>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>

@@ -1,0 +1,610 @@
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">Panduan Operator</span>
+    <h1>Tutorial</h1>
+    <p class="page-header__sub">Dari QRIS statis sampai order otomatis PAID.</p>
+  </div>
+  <div class="page-header__actions">
+    <a class="btn btn--primary" href="/qris">
+      <%- include('../../partials/icon', { name: 'qris' }) %>
+      <span>Buka QRIS Checkout</span>
+    </a>
+  </div>
+</div>
+
+<div class="docs-layout">
+  <nav class="docs-nav" aria-label="Bagian tutorial">
+    <span class="docs-nav__title">Bagian</span>
+    <% sections.forEach((item) => { %>
+      <a
+        href="/tutorial?bagian=<%= item.key %>"
+        <%= section === item.key ? 'aria-current="page" style="background:var(--primary-soft);color:var(--primary);font-weight:600"' : '' %>
+      ><%= item.label %></a>
+    <% }) %>
+  </nav>
+
+  <div class="docs-body">
+    <section class="card">
+      <div class="card__body">
+        <span class="badge badge--primary"><%= brand.name %> &middot; Panduan Merchant</span>
+        <h2 style="margin-top:12px">Setup Payment Tools <%= brand.name %></h2>
+        <p class="muted">
+          Pilih sumber QRIS, simpan satu QRIS statis merchant, siapkan deteksi pembayaran otomatis,
+          lalu buat order percobaan sampai status berubah menjadi PAID.
+        </p>
+
+        <div class="grid-4" style="margin-top:8px">
+          <div class="metric" style="min-height:auto;padding:var(--sp-4)">
+            <span class="section-label">01</span>
+            <strong class="text-sm">QRIS statis merchant</strong>
+            <span class="muted text-xs">Satu QRIS aktif dari provider yang didukung</span>
+            <span class="badge badge--danger">Wajib</span>
+          </div>
+          <div class="metric" style="min-height:auto;padding:var(--sp-4)">
+            <span class="section-label">02</span>
+            <strong class="text-sm">Deteksi pembayaran</strong>
+            <span class="muted text-xs">Koneksi merchant + <%= brand.name %> Listener</span>
+            <span class="badge badge--danger">Wajib</span>
+          </div>
+          <div class="metric" style="min-height:auto;padding:var(--sp-4)">
+            <span class="section-label">03</span>
+            <strong class="text-sm">Test order sampai PAID</strong>
+            <span class="muted text-xs">Bisa dicoba meskipun belum berlangganan</span>
+            <span class="badge badge--success">Gratis</span>
+          </div>
+          <div class="metric" style="min-height:auto;padding:var(--sp-4)">
+            <span class="section-label">04</span>
+            <strong class="text-sm">Projects &amp; REST API</strong>
+            <span class="muted text-xs">Pisahkan API key, webhook, dan riwayat</span>
+            <span class="badge badge--warn">Langganan</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <%# ── Sebelum mulai ── %>
+    <% if (section === 'mulai') { %>
+      <section class="docs-block">
+        <h2>Sebelum Mulai</h2>
+
+        <div class="notice notice--info">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'info' }) %>
+            <span>Harus punya QRIS statis</span>
+          </div>
+          <p>
+            <%= brand.name %> tidak membuat akun QRIS dari nol. Anda harus sudah memiliki QRIS
+            merchant dari provider yang akan dipakai. <%= brand.name %> menyimpan QRIS statis
+            tersebut, membuat QR sesuai nominal order, lalu mengenali pembayaran yang masuk
+            secara otomatis.
+          </p>
+        </div>
+
+        <div class="kv">
+          <div class="kv__row">
+            <span class="kv__key">Shopee Partner</span>
+            <span class="kv__val">Token portal merchant + QRIS Shopee</span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">GoPay Merchant</span>
+            <span class="kv__val">Nomor merchant + OTP + QRIS GoPay</span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Listener Provider</span>
+            <span class="kv__val">DANA, BCA, OrderKuota, BRI, BNI, dan lainnya</span>
+          </div>
+        </div>
+
+        <div class="row">
+          <a class="btn btn--primary" href="/qris">Pasang QRIS Sekarang</a>
+          <a class="btn btn--secondary" href="/tutorial?bagian=wajib">Lanjut ke Setup Wajib</a>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Setup wajib ── %>
+    <% if (section === 'wajib') { %>
+      <section class="docs-block">
+        <h2>Setup Wajib</h2>
+        <p>Urutan setup yang disarankan.</p>
+
+        <div class="numbered">
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">Pasang QRIS &amp; Pilih Provider</span>
+              <span class="numbered__desc">
+                Buka halaman QRIS, pilih asal QRIS lalu upload QRIS statis. Koneksi akun provider
+                tidak menjadi syarat untuk mengunggah QRIS.
+              </span>
+              <div class="row row-tight" style="margin-top:6px">
+                <a class="btn btn--secondary btn--xs" href="/qris">Buka QRIS</a>
+                <a class="btn btn--ghost btn--xs" href="/shopee">Shopee</a>
+                <a class="btn btn--ghost btn--xs" href="/gopay">GoPay</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">Siapkan Deteksi Pembayaran</span>
+              <span class="numbered__desc">
+                Shopee dan GoPay dapat memakai API dan Listener secara paralel. Provider lain
+                memakai <%= brand.name %> Listener. Di aplikasi Listener, aktifkan aplikasi sumber
+                yang sesuai dengan provider QRIS.
+              </span>
+              <div class="alert alert--warn" style="margin-top:8px">
+                <%- include('../../partials/icon', { name: 'bulb' }) %>
+                <div class="alert__body">
+                  Gunakan QRIS statis merchant asli, bukan QR sekali pakai atau QR order yang sudah
+                  memiliki nominal.
+                </div>
+              </div>
+              <div class="row row-tight" style="margin-top:6px">
+                <a class="btn btn--secondary btn--xs" href="/listener">Buka Listener</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">Buat Test Order &amp; Terima Pembayaran</span>
+              <span class="numbered__desc">
+                Buka QRIS, isi nominal, lalu buat QR. Bayar persis nominal yang tampil. API provider
+                atau Listener membaca transaksi masuk dan <%= brand.name %> mencocokkannya dengan
+                order PENDING sampai status berubah menjadi PAID.
+              </span>
+              <div class="alert alert--success" style="margin-top:8px">
+                <%- include('../../partials/icon', { name: 'check' }) %>
+                <div class="alert__body">
+                  User yang belum langganan tetap boleh melakukan tahap ini. Langganan baru
+                  diperlukan untuk membuat API Key dan memakai REST API.
+                </div>
+              </div>
+              <div class="row row-tight" style="margin-top:6px">
+                <a class="btn btn--secondary btn--xs" href="/qris">Buat Test Order</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Shopee ── %>
+    <% if (section === 'shopee') { %>
+      <section class="docs-block">
+        <h2>Shopee Partner &middot; Wajib Baca</h2>
+        <p>
+          Token ShopeePay Partner. Deteksi pembayaran Shopee menggunakan koneksi portal Shopee
+          Partner. Token disimpan terenkripsi dan tidak ditampilkan kembali setelah disimpan.
+        </p>
+
+        <div class="numbered">
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">
+                Buka <a href="https://partner.shopee.co.id" target="_blank" rel="noopener">partner.shopee.co.id</a>
+                lalu login ke akun merchant Anda. Kolom pencarian: cari menu <em>Partner</em>.
+              </span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">Tekan F12 &rarr; tab Application &rarr; Cookies &rarr; pilih domain partner.shopee.co.id.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">
+                Cari cookie <code>__shopee_partner_website_x_token_live</code> dan salin Value-nya.
+                Nilainya umumnya token panjang dan sering diawali <code>eyJ</code>.
+              </span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">
+                Buka <a href="/shopee">Shopee Partner</a> &rarr; tempel token &rarr; Simpan &amp; Tes Koneksi.
+              </span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">
+                Pasang QRIS Shopee, lalu tekan tombol Jadikan QRIS Aktif di halaman QRIS agar order
+                baru memakai QRIS tersebut.
+              </span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">
+                Pilih mode nominal sesuai kebutuhan. Mode Hybrid mematikan Fee dan Kode Unik random,
+                lalu memprioritaskan nominal asli.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="notice notice--danger">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'alert' }) %>
+            <span>Perhatian</span>
+          </div>
+          <p>
+            Integrasi ini memakai sesi portal merchant, bukan API publik resmi. Token dapat
+            kedaluwarsa atau berhenti valid jika sesi berubah. Jika tes koneksi gagal, ambil token
+            baru. Gunakan hanya akun merchant yang Anda miliki atau yang memang Anda berwenang kelola.
+          </p>
+        </div>
+
+        <div class="row">
+          <a class="btn btn--primary" href="/shopee">Buka Shopee Partner</a>
+          <a class="btn btn--secondary" href="/tutorial?bagian=gopay">Lanjut ke GoPay</a>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── GoPay ── %>
+    <% if (section === 'gopay') { %>
+      <section class="docs-block">
+        <h2>GoPay Merchant / GoBiz &middot; Wajib Baca</h2>
+        <p>
+          GoPay di <%= brand.name %> menggunakan nomor merchant dan OTP. Setelah verifikasi
+          berhasil, sesi yang diperlukan untuk membaca transaksi disimpan terenkripsi.
+        </p>
+
+        <div class="numbered">
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">
+                Pastikan Anda memiliki akun GoPay Merchant/GoBiz. Informasi merchant tersedia di
+                <a href="https://gobiz.co.id" target="_blank" rel="noopener">gobiz.co.id</a>.
+              </span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">
+                Buka halaman <a href="/gopay">GoPay Merchant</a>, masukkan nomor yang terdaftar,
+                lalu tekan Kirim OTP.
+              </span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">Masukkan OTP &rarr; tekan Verifikasi &amp; Hubungkan.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">Tekan Tes Koneksi untuk memastikan transaksi dapat dibaca.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">
+                Upload atau tempel QRIS GoPay dan jadikan aktif jika GoPay dipakai untuk order LIVE baru.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="notice notice--danger">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'alert' }) %>
+            <span>Perhatian</span>
+          </div>
+          <p>
+            Koneksi bergantung pada sesi dan endpoint provider. Jika status ERROR atau sesi tidak
+            lagi valid, hubungkan ulang. Gunakan hanya akun merchant yang Anda miliki atau yang
+            memang Anda berwenang kelola.
+          </p>
+        </div>
+
+        <div class="row">
+          <a class="btn btn--primary" href="/gopay">Buka GoPay Merchant</a>
+          <a class="btn btn--secondary" href="/tutorial?bagian=gopay-rekomendasi">Lanjut ke Rekomendasi</a>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Rekomendasi GoPay ── %>
+    <% if (section === 'gopay-rekomendasi') { %>
+      <section class="docs-block">
+        <h2>GoPay Recommendation</h2>
+        <p>
+          Untuk GoPay, Fee dan Nominal Unik direkomendasikan tetap OFF. Tujuan utamanya bukan hanya
+          membuat nominal lebih rapi, tetapi juga mengurangi pola transaksi otomatis yang berpotensi
+          dianggap tidak wajar oleh sistem provider.
+        </p>
+
+        <div class="notice notice--danger">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'alert' }) %>
+            <span>Penting untuk keamanan akun GoPay Merchant</span>
+          </div>
+          <p>
+            Pola transaksi berulang dengan tambahan fee atau angka unik pada hampir setiap pembayaran
+            dapat meningkatkan risiko akun ditandai sebagai aktivitas mencurigakan. Dampaknya dapat
+            berupa pembatasan fitur, penangguhan, pemeriksaan akun, hingga risiko akun diblokir.
+            Mode Hybrid membantu mengurangi pola tersebut, tetapi bukan jaminan.
+          </p>
+        </div>
+
+        <div class="numbered">
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">01 &middot; Fee OFF</span>
+              <span class="numbered__desc">Agar nominal tidak terus-menerus mendapat tambahan biaya yang membentuk pola otomatis.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">02 &middot; Nominal Unik OFF</span>
+              <span class="numbered__desc">Selama tidak ada bentrok order PENDING, customer membayar nominal bulat seperti pembayaran biasa.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">03 &middot; Mode Hybrid</span>
+              <span class="numbered__desc">Nominal tetap bulat. +1/+2/+3 baru dipakai otomatis ketika ada order PENDING lain dengan nominal final yang sama.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">04 &middot; Tetap Bisa Diubah</span>
+              <span class="numbered__desc">Fee dan Nominal Unik tetap tersedia jika kebutuhan bisnis memang memerlukannya. Risiko penggunaan setting tersebut menjadi tanggung jawab merchant.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card__head">
+            <div class="card__head-title">
+              <h2>Contoh Mode Hybrid</h2>
+            </div>
+          </div>
+          <div class="card__body card__body--tight">
+            <table class="mini-table">
+              <thead>
+                <tr><th>Order</th><th class="num">Nominal dibayar</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Order A &middot; base Rp10.000</td><td class="num">Rp10.000</td></tr>
+                <tr><td>Order B &middot; A masih PENDING</td><td class="num">Rp10.001</td></tr>
+                <tr><td>Order C &middot; A+B masih PENDING</td><td class="num">Rp10.002</td></tr>
+                <tr><td>A sudah PAID / EXPIRED / CANCELLED</td><td class="num">Rp10.000 tersedia lagi</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="row">
+          <a class="btn btn--primary" href="/qris">Buka Pengaturan QRIS</a>
+          <a class="btn btn--secondary" href="/tutorial?bagian=listener">Lanjut ke Listener</a>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Listener ── %>
+    <% if (section === 'listener') { %>
+      <section class="docs-block">
+        <h2>Listener Provider</h2>
+        <p>
+          DANA, BCA Merchant, Livin Merchant, BRI Merchant, OCTO Merchant, BNI Merchant, BYOND BSI,
+          JakOne Merchant, Bukalapak, dan OrderKuota menggunakan <%= brand.name %> Listener untuk
+          membantu mengenali pembayaran dari notifikasi Android.
+        </p>
+
+        <div class="numbered">
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">Pasang QRIS statis dari provider yang digunakan pada halaman QRIS.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">Login ke aplikasi <%= brand.name %> Listener pada HP yang menerima notifikasi pembayaran.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">Aktifkan Notification Access dan Background Service.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">Di menu sumber aplikasi, aktifkan aplikasi yang sama dengan provider QRIS.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__desc">Pastikan halaman QRIS menampilkan status deteksi pembayaran Siap sebelum membuat order LIVE.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="notice notice--info">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'info' }) %>
+            <span>Penting</span>
+          </div>
+          <p>
+            <%= brand.name %> hanya memproses notifikasi yang berasal dari provider QRIS aktif.
+            Notifikasi provider lain di HP yang sama disimpan sebagai ignored dan tidak dapat
+            membayar order.
+          </p>
+        </div>
+
+        <div class="row">
+          <a class="btn btn--primary" href="/listener">Kelola <%= brand.name %> Listener</a>
+          <a class="btn btn--secondary" href="/tutorial?bagian=projects">Lanjut ke Projects</a>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Projects ── %>
+    <% if (section === 'projects') { %>
+      <section class="docs-block">
+        <h2>Projects</h2>
+        <p>
+          Satu akun <%= brand.name %> dapat memiliki beberapa Project. Setiap project memisahkan
+          riwayat transaksi dan identitas integrasi. API Key dan Webhook tiap project dikelola
+          terpusat dari menu Pengaturan, sedangkan koneksi Shopee/GoPay, Listener, serta QRIS aktif
+          tetap dipakai bersama di level akun.
+        </p>
+
+        <div class="numbered">
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">Buat Project</span>
+              <span class="numbered__desc">Buka menu Projects lalu isi nama seperti KiosDigi, Bot Telegram, atau Website Reseller. Identitas project dibuat otomatis.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">Atur Webhook Project</span>
+              <span class="numbered__desc">Buka Pengaturan &rarr; Webhook untuk memasang URL callback masing-masing project. Jika request API mengirim webhook_url, URL order tersebut tetap lebih tinggi prioritasnya.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">Buat API Key Project</span>
+              <span class="numbered__desc">Jika langganan aktif, buka Pengaturan &rarr; API Key untuk membuat pk_live_.... API key otomatis menjadi identitas project.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <a class="btn btn--primary" href="/projects">Buka Projects</a>
+          <a class="btn btn--secondary" href="/settings?tab=api-key">Kelola API Key</a>
+          <a class="btn btn--secondary" href="/settings?tab=webhook">Kelola Webhook</a>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── API & Webhook ── %>
+    <% if (section === 'api') { %>
+      <section class="docs-block">
+        <h2>API Key, REST API, Webhook &amp; Keamanan</h2>
+
+        <div class="kv">
+          <div class="kv__row">
+            <span class="kv__key">API Key</span>
+            <span class="kv__val">
+              API Key dibuat per Project. Test order manual tidak membutuhkan langganan; pembuatan dan
+              penggunaan REST API memerlukan langganan aktif. Jika langganan habis, key tetap
+              tersimpan tetapi akses API terkunci.
+              <div style="margin-top:6px"><a href="/settings?tab=api-key">Buka Pengaturan &rarr; API Key</a></div>
+            </span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Webhook</span>
+            <span class="kv__val">
+              Atur URL webhook masing-masing project dari Pengaturan &rarr; Webhook. Webhook Secret
+              akun dipakai untuk memverifikasi callback.
+              <div style="margin-top:6px"><a href="/settings?tab=webhook">Buka Pengaturan &rarr; Webhook</a></div>
+            </span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">REST API</span>
+            <span class="kv__val">
+              Gunakan POST /api/orders dari server aplikasi Anda. Jangan menaruh API Key di browser
+              atau aplikasi publik.
+              <div style="margin-top:6px"><a href="/documentation">Buka Documentation</a></div>
+            </span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">2FA</span>
+            <span class="kv__val">
+              Aktifkan Authenticator dari Pengaturan &rarr; 2FA sebagai lapisan keamanan tambahan.
+              <div style="margin-top:6px"><a href="/settings?tab=twofa">Buka Pengaturan &rarr; 2FA</a></div>
+            </span>
+          </div>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── FAQ ── %>
+    <% if (section === 'faq') { %>
+      <section class="docs-block">
+        <h2>Pertanyaan yang Sering Ditanya</h2>
+
+        <div class="accordion" data-accordion="single">
+          <div class="accordion__item is-open">
+            <button class="accordion__trigger" type="button">
+              <span>Order tidak otomatis PAID padahal sudah membayar?</span>
+              <%- include('../../partials/icon', { name: 'chevronDown' }) %>
+            </button>
+            <div class="accordion__panel">
+              Periksa: provider masih Terhubung, QRIS provider tersebut berstatus Aktif, nominal
+              dibayar persis sesuai checkout, order belum expired, dan tes koneksi provider berhasil.
+              Jika salah satu sesi provider kedaluwarsa, hubungkan ulang.
+            </div>
+          </div>
+
+          <div class="accordion__item">
+            <button class="accordion__trigger" type="button">
+              <span>QRIS tidak dapat dibayar atau ditolak aplikasi?</span>
+              <%- include('../../partials/icon', { name: 'chevronDown' }) %>
+            </button>
+            <div class="accordion__panel">
+              Pastikan sumber yang disimpan adalah QRIS statis merchant asli. Jangan memasukkan QR
+              dinamis atau QR sekali pakai dari order lain. Untuk Shopee dan GoPay Anda dapat upload
+              gambar yang jelas atau tempel string QRIS.
+            </div>
+          </div>
+
+          <div class="accordion__item">
+            <button class="accordion__trigger" type="button">
+              <span>Harus langganan dulu untuk mencoba pembayaran?</span>
+              <%- include('../../partials/icon', { name: 'chevronDown' }) %>
+            </button>
+            <div class="accordion__panel">
+              Tidak. Anda dapat menghubungkan provider, memasang QRIS, membuat order dari dashboard,
+              membayar, dan menguji status sampai PAID tanpa langganan. Langganan diperlukan untuk
+              membuat API Key dan menggunakan REST API.
+            </div>
+          </div>
+
+          <div class="accordion__item">
+            <button class="accordion__trigger" type="button">
+              <span>Token Shopee status ERROR?</span>
+              <%- include('../../partials/icon', { name: 'chevronDown' }) %>
+            </button>
+            <div class="accordion__panel">
+              Ambil ulang token <code>__shopee_partner_website_x_token_live</code> dari portal
+              Shopee Partner lalu simpan kembali. Token dapat kedaluwarsa atau berubah ketika sesi
+              merchant diperbarui.
+            </div>
+          </div>
+
+          <div class="accordion__item">
+            <button class="accordion__trigger" type="button">
+              <span>Kalau ada dua order dengan nominal sama?</span>
+              <%- include('../../partials/icon', { name: 'chevronDown' }) %>
+            </button>
+            <div class="accordion__panel">
+              Jika provider memakai Mode Hybrid, order pertama memakai nominal normal. Selama nominal
+              tersebut masih PENDING, order berikutnya mendapat tambahan minimum +1/+2 dan seterusnya.
+              Jika Nominal Unik aktif, <%= brand.name %> memakai kode random sesuai jumlah digit yang
+              diatur.
+            </div>
+          </div>
+
+          <div class="accordion__item">
+            <button class="accordion__trigger" type="button">
+              <span>Langganan habis, apakah token provider ikut hilang?</span>
+              <%- include('../../partials/icon', { name: 'chevronDown' }) %>
+            </button>
+            <div class="accordion__panel">
+              Tidak. Koneksi/token provider tidak dihapus hanya karena langganan berakhir. Selama sesi
+              provider masih valid, Anda tetap dapat memakai payment tools dan test order manual.
+              Akses API saja yang terkunci.
+            </div>
+          </div>
+        </div>
+      </section>
+    <% } %>
+  </div>
+</div>

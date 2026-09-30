@@ -1,0 +1,22 @@
+<header class="topbar">
+  <div class="topbar__title">
+    <% if (typeof pageEyebrow !== 'undefined' && pageEyebrow) { %>
+      <span class="topbar__eyebrow"><%= pageEyebrow %></span>
+    <% } %>
+    <div class="topbar__heading"><%= pageTitle || 'Dashboard' %></div>
+  </div>
+
+  <div class="topbar__actions">
+    <a class="btn btn--ghost btn--sm" href="<%= brand.supportUrl %>" target="_blank" rel="noopener">
+      <%- include('icon', { name: 'telegram' }) %>
+      <span>Support</span>
+    </a>
+    <%- include('theme-toggle', { className: '' }) %>
+    <a class="btn btn--secondary btn--sm" href="/settings" title="Pengaturan akun">
+      <span class="avatar avatar--soft" style="width:24px;height:24px;font-size:11px">
+        <%= helpers.initials(user ? user.name : '?') %>
+      </span>
+      <span><%= user ? user.name : 'Tamu' %></span>
+    </a>
+  </div>
+</header>

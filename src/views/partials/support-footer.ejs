@@ -1,0 +1,7 @@
+<footer class="content-footer">
+  <span>&copy; <%= brand.copyrightYear %> <%= brand.name %> <%= brand.footerNote %>. All rights reserved.</span>
+  <a class="row row-tight" style="gap:6px" href="<%= brand.supportUrl %>" target="_blank" rel="noopener">
+    <%- include('icon', { name: 'telegram' }) %>
+    <span><%= brand.supportLabel %> &middot; <%= brand.supportPlatform %></span>
+  </a>
+</footer>

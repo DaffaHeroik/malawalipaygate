@@ -1,0 +1,8 @@
+<a class="support-link" href="<%= brand.supportUrl %>" target="_blank" rel="noopener">
+  <%- include('icon', { name: 'telegram' }) %>
+  <span>
+    <%= brand.supportLabel %><br>
+    <span class="muted text-sm"><%= brand.supportPlatform %></span>
+  </span>
+  <%- include('icon', { name: 'arrowRight', className: 'arrow' }) %>
+</a>

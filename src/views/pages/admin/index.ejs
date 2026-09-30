@@ -1,0 +1,200 @@
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">Administrator</span>
+    <h1>Panel Admin</h1>
+    <p class="page-header__sub">Harga paket, status provider, merchant, dan aktivasi langganan.</p>
+  </div>
+  <div class="page-header__actions">
+    <span class="badge badge--primary">Role: <%= user.role %></span>
+  </div>
+</div>
+
+<% if (!isDb) { %>
+  <div class="notice notice--info">
+    <div class="notice__head">
+      <%- include('../../partials/icon', { name: 'info' }) %>
+      <span>Mode mock</span>
+    </div>
+    <p>Panel admin menampilkan data nyata ketika aplikasi berjalan dengan <code>DATA_SOURCE=db</code>. Sekarang data masih dummy.</p>
+  </div>
+<% } %>
+
+<div data-tabs class="stack" data-tab-group="admin" data-tab-default="<%= tab %>">
+  <div class="tabs" role="tablist">
+    <button class="tab" type="button" role="tab" data-tab="overview">Ringkasan</button>
+    <button class="tab" type="button" role="tab" data-tab="subscriptions">Langganan</button>
+    <button class="tab" type="button" role="tab" data-tab="providers">Provider</button>
+    <button class="tab" type="button" role="tab" data-tab="merchants">Merchant</button>
+  </div>
+
+  <%# ── Ringkasan ── %>
+  <div class="tab-panel" data-tab-panel="overview" role="tabpanel">
+    <div class="stack">
+      <div class="grid-4">
+        <div class="metric"><span class="metric__label">Merchant</span><span class="metric__value"><%= helpers.formatNumber(overview.users) %></span></div>
+        <div class="metric"><span class="metric__label">Total Order</span><span class="metric__value"><%= helpers.formatNumber(overview.orders) %></span></div>
+        <div class="metric"><span class="metric__label">Order Paid</span><span class="metric__value"><%= helpers.formatNumber(overview.paidCount) %></span></div>
+        <div class="metric"><span class="metric__label">Volume Paid</span><span class="metric__value metric__value--money"><%= helpers.formatRupiah(overview.paidVolume) %></span></div>
+      </div>
+
+      <section class="card">
+        <div class="card__head">
+          <div class="card__head-title">
+            <span class="section-label">Harga</span>
+            <h2>Harga Paket Langganan</h2>
+            <p>Perubahan langsung dipakai halaman Langganan.</p>
+          </div>
+        </div>
+        <form method="post" action="/admin/pricing" class="card__body">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="grid-4">
+            <% [1, 2, 3, 5].forEach((months) => { %>
+              <label class="field">
+                <span class="field__label"><%= months %> Bulan</span>
+                <input class="input" type="number" min="1000" step="1000" name="price_<%= months %>" value="<%= overview.pricing[months] %>">
+              </label>
+            <% }) %>
+          </div>
+          <div class="row">
+            <button class="btn btn--primary" type="submit">
+              <%- include('../../partials/icon', { name: 'check' }) %>
+              <span>Simpan Harga</span>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <div class="card__head-title">
+            <span class="section-label">Pengumuman</span>
+            <h2>Pesan Global</h2>
+          </div>
+        </div>
+        <form method="post" action="/admin/announcement" class="card__body">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <label class="field">
+            <span class="field__label">Pengumuman dashboard</span>
+            <input class="input" type="text" name="announcement" maxlength="500" value="<%= overview.announcement %>" placeholder="Contoh: Maintenance 28 Sep 01:00–02:00 WIB">
+          </label>
+          <div class="row">
+            <button class="btn btn--secondary" type="submit">Simpan Pengumuman</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="card__head"><div class="card__head-title"><span class="section-label">Terbaru</span><h2>Order Terbaru</h2></div></div>
+        <div class="table-wrap">
+          <table class="table" style="min-width:720px">
+            <thead><tr><th>Order</th><th>Provider</th><th class="num">Pay</th><th>Status</th><th>Dibuat</th></tr></thead>
+            <tbody>
+              <% if (!orders.length) { %><tr><td colspan="5" class="table__empty">Belum ada order.</td></tr><% } %>
+              <% orders.forEach((order) => { const meta = orderStatus[order.status] || orderStatus.pending; %>
+                <tr>
+                  <td class="cell-id mono"><%= order.id %></td>
+                  <td><%= order.provider || '-' %></td>
+                  <td class="num"><%= helpers.formatRupiah(order.payAmount) %></td>
+                  <td><span class="badge badge--<%= meta.tone %> badge--dot"><%= meta.label %></span></td>
+                  <td class="text-sm nowrap"><%= helpers.formatDateTime(order.createdAt) %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <%# ── Langganan ── %>
+  <div class="tab-panel" data-tab-panel="subscriptions" role="tabpanel">
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title"><span class="section-label">Tagihan</span><h2>Tagihan Langganan</h2><p>Mengaktifkan tagihan akan menambah masa aktif merchant.</p></div>
+      </div>
+      <div class="table-wrap">
+        <table class="table" style="min-width:760px">
+          <thead><tr><th>Tagihan</th><th>Merchant</th><th>Paket</th><th class="num">Total</th><th>Status</th><th>Dibuat</th><th class="num">Aksi</th></tr></thead>
+          <tbody>
+            <% if (!payments.length) { %><tr><td colspan="7" class="table__empty">Belum ada tagihan.</td></tr><% } %>
+            <% payments.forEach((payment) => { const meta = orderStatus[payment.status] || orderStatus.pending; %>
+              <tr>
+                <td class="mono text-sm"><%= payment.id %></td>
+                <td class="text-sm"><%= payment.userEmail || '-' %></td>
+                <td><%= payment.planMonths %> Bulan</td>
+                <td class="num"><%= helpers.formatRupiah(payment.totalCheckout) %></td>
+                <td><span class="badge badge--<%= meta.tone %> badge--dot"><%= meta.label %></span></td>
+                <td class="text-sm nowrap"><%= helpers.formatDateTime(payment.createdAt) %></td>
+                <td class="num">
+                  <form method="post" action="/admin/subscriptions/<%= payment.id %>/activate">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <button class="btn btn--secondary btn--xs" type="submit" <%= payment.status === 'paid' ? 'disabled' : '' %>>Aktifkan</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <%# ── Provider ── %>
+  <div class="tab-panel" data-tab-panel="providers" role="tabpanel">
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title"><span class="section-label">Kontrol</span><h2>Provider Pembayaran</h2><p>Provider yang dinonaktifkan akan menolak order dengan error <code>payment_provider_disabled</code>.</p></div>
+      </div>
+      <div class="table-wrap">
+        <table class="table" style="min-width:640px">
+          <thead><tr><th>Provider</th><th>Grup</th><th>Status</th><th class="num">Aksi</th></tr></thead>
+          <tbody>
+            <% providers.forEach((provider) => { const disabled = (overview.disabledProviders || []).includes(provider.key); %>
+              <tr>
+                <td class="strong"><%= provider.label %></td>
+                <td><span class="badge badge--muted"><%= provider.group %></span></td>
+                <td>
+                  <span class="badge badge--<%= disabled ? 'danger' : 'success' %> badge--dot"><%= disabled ? 'Nonaktif' : 'Aktif' %></span>
+                </td>
+                <td class="num">
+                  <form method="post" action="/admin/providers/toggle">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <input type="hidden" name="provider" value="<%= provider.key %>">
+                    <button class="btn btn--<%= disabled ? 'primary' : 'ghost' %> btn--xs" type="submit"><%= disabled ? 'Aktifkan' : 'Nonaktifkan' %></button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <%# ── Merchant ── %>
+  <div class="tab-panel" data-tab-panel="merchants" role="tabpanel">
+    <section class="card">
+      <div class="card__head"><div class="card__head-title"><span class="section-label">Pengguna</span><h2>Merchant</h2></div></div>
+      <div class="table-wrap">
+        <table class="table" style="min-width:760px">
+          <thead><tr><th>Email</th><th>Nama</th><th>Role</th><th>Email</th><th>Langganan s/d</th><th>Terdaftar</th></tr></thead>
+          <tbody>
+            <% if (!users.length) { %><tr><td colspan="6" class="table__empty">Belum ada merchant.</td></tr><% } %>
+            <% users.forEach((row) => { %>
+              <tr>
+                <td class="strong"><%= row.email %></td>
+                <td><%= row.displayName || row.name || '-' %></td>
+                <td><span class="badge badge--<%= row.role === 'admin' ? 'primary' : 'muted' %>"><%= row.role %></span></td>
+                <td>
+                  <span class="badge badge--<%= row.emailVerified ? 'success' : 'warn' %> badge--dot"><%= row.emailVerified ? 'Verified' : 'Pending' %></span>
+                </td>
+                <td class="text-sm nowrap"><%= row.subscriptionUntil ? helpers.formatDateTime(row.subscriptionUntil) : '-' %></td>
+                <td class="text-sm nowrap"><%= helpers.formatDateTime(row.createdAt || row.joinedAt) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>

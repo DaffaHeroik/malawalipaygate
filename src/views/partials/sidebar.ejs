@@ -1,0 +1,63 @@
+<aside class="sidebar" id="app-sidebar" aria-label="Navigasi utama">
+  <div class="sidebar__brand">
+    <a href="/dashboard" aria-label="<%= brand.name %> Dashboard">
+      <%- include('logo') %>
+    </a>
+    <div class="sidebar__brand-copy">
+      <small><%= brand.panelName %></small>
+    </div>
+    <button class="sidebar__close" type="button" data-sidebar-close aria-label="Tutup menu">
+      <%- include('icon', { name: 'close' }) %>
+    </button>
+  </div>
+
+  <div class="sidebar__scroll">
+    <% nav.forEach((section) => { %>
+      <section class="nav-section" aria-label="<%= section.heading %>">
+        <div class="nav-heading"><%= section.heading %></div>
+        <nav class="nav-list">
+          <% section.items.forEach((item) => { %>
+            <a
+              class="nav-item<%= isActive(item.href) ? ' is-active' : '' %>"
+              href="<%= item.href %>"
+              title="<%= item.label %>"
+              <%= isActive(item.href) ? 'aria-current="page"' : '' %>
+            >
+              <span class="nav-icon"><%- include('icon', { name: item.icon }) %></span>
+              <span class="nav-label"><%= item.label %></span>
+            </a>
+          <% }) %>
+        </nav>
+      </section>
+    <% }) %>
+
+    <% if (user && user.role === 'admin') { %>
+      <section class="nav-section" aria-label="Administrator">
+        <div class="nav-heading">Administrator</div>
+        <nav class="nav-list">
+          <a class="nav-item<%= isActive('/admin') ? ' is-active' : '' %>" href="/admin" title="Panel Admin" <%= isActive('/admin') ? 'aria-current="page"' : '' %>>
+            <span class="nav-icon"><%- include('icon', { name: 'shield' }) %></span>
+            <span class="nav-label">Panel Admin</span>
+          </a>
+        </nav>
+      </section>
+    <% } %>
+  </div>
+
+  <div class="sidebar__footer">
+    <div class="user-card">
+      <span class="user-card__avatar" aria-hidden="true"><%= helpers.initials(user ? user.name : '?') %></span>
+      <span class="user-card__meta">
+        <span class="user-card__name"><%= user ? user.name : 'Tamu' %></span>
+        <span class="user-card__email"><%= user ? user.email : 'belum masuk' %></span>
+      </span>
+    </div>
+    <div class="row row-tight">
+      <%- include('theme-toggle', { className: '' }) %>
+      <a class="btn btn--ghost btn--sm grow" href="/logout">
+        <%- include('icon', { name: 'logout' }) %>
+        <span>Keluar</span>
+      </a>
+    </div>
+  </div>
+</aside>

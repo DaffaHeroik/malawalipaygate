@@ -1,0 +1,61 @@
+<div class="auth-title">
+  <h1>Masuk</h1>
+  <p>Kelola QRIS, order, dan API.</p>
+</div>
+
+<% if (error) { %>
+  <div class="alert alert--danger">
+    <%- include('../../partials/icon', { name: 'alert' }) %>
+    <div class="alert__body"><%= error %></div>
+  </div>
+<% } %>
+
+<% if (googleEnabled) { %>
+  <a class="btn-google" href="/auth/google?intent=login" rel="nofollow">
+    <svg viewBox="0 0 18 18" aria-hidden="true">
+      <path fill="#4285F4" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.482h4.844a4.14 4.14 0 0 1-1.797 2.716v2.258h2.909c1.702-1.567 2.684-3.874 2.684-6.615Z"/>
+      <path fill="#34A853" d="M9 18c2.43 0 4.468-.806 5.956-2.18l-2.909-2.258c-.806.54-1.835.859-3.047.859-2.344 0-4.328-1.585-5.037-3.714H.956v2.332A9 9 0 0 0 9 18Z"/>
+      <path fill="#FBBC05" d="M3.963 10.707A5.41 5.41 0 0 1 3.682 9c0-.592.102-1.167.281-1.707V4.961H.956A9 9 0 0 0 0 9c0 1.452.347 2.827.956 4.039l3.007-2.332Z"/>
+      <path fill="#EA4335" d="M9 3.579c1.322 0 2.508.454 3.441 1.346l2.581-2.581C13.464.892 11.426 0 9 0A9 9 0 0 0 .956 4.961l3.007 2.332C4.672 5.164 6.656 3.579 9 3.579Z"/>
+    </svg>
+    <span>Lanjutkan dengan Google</span>
+  </a>
+  <div class="auth-divider">atau masuk dengan email</div>
+<% } %>
+
+<form method="post" action="/login" class="stack" data-submit-once>
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <input type="hidden" name="next" value="<%= next %>">
+
+  <label class="field">
+    <span class="field__label">Email</span>
+    <input class="input" type="email" name="email" value="<%= email %>" placeholder="nama@perusahaan.com" required autocomplete="username" maxlength="254">
+  </label>
+
+  <label class="field">
+    <span class="field__label">Password</span>
+    <input class="input" type="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+  </label>
+
+  <% if (typeof twoFactorRequired !== 'undefined' && twoFactorRequired) { %>
+    <label class="field">
+      <span class="field__label">Kode Authenticator (2FA)</span>
+      <input class="input" type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456" autocomplete="one-time-code" required>
+      <span class="field__hint">Masukkan 6 digit dari aplikasi authenticator Anda.</span>
+    </label>
+  <% } %>
+
+  <% if (turnstileEnabled) { %>
+    <div class="turnstile-wrap">
+      <div class="cf-turnstile" data-sitekey="<%= turnstileSiteKey %>" data-action="login" data-size="flexible" data-theme="auto"></div>
+    </div>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <% } %>
+
+  <button class="btn btn--primary btn--block btn--lg" type="submit">Masuk</button>
+</form>
+
+<div class="auth-links">
+  <a href="/forgot-password">Lupa Password?</a>
+  <span class="muted text-sm">Belum punya akun? <a href="/register">Daftar sekarang</a></span>
+</div>

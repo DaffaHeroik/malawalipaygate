@@ -1,0 +1,641 @@
+<%
+  const A = apiBaseUrl;
+  const K = 'pk_live_xxxxxxxxxxxxxxxxxxxxxxxx';
+  const QRIS_SAMPLE = '00020101021126610014COM.GO-JEK.WWW0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005204000053033605802ID5910KIZUSHOP6007BEKASI6304ABCD';
+
+  // ── Sampel kode per endpoint ──────────────────────────────────────────
+  const code = {
+    auth: {
+      curl: [
+        `curl -X GET ${A}/orders/ord_7f3k9d2m \\`,
+        `  -H "x-api-key: ${K}"`,
+      ].join('\n'),
+      js: `const res = await fetch("${A}/orders/ord_7f3k9d2m", {\n  headers: { "x-api-key": "${K}" },\n});\nconst data = await res.json();`,
+      php: `<?php\n$ch = curl_init("${A}/orders/ord_7f3k9d2m");\ncurl_setopt_array($ch, [\n  CURLOPT_RETURNTRANSFER => true,\n  CURLOPT_HTTPHEADER => ["x-api-key: ${K}"],\n]);\n$data = json_decode(curl_exec($ch), true);`,
+      python: `import requests\n\nres = requests.get(\n    "${A}/orders/ord_7f3k9d2m",\n    headers={"x-api-key": "${K}"},\n    timeout=10,\n)\ndata = res.json()`,
+    },
+
+    qris: {
+      curl: [
+        `curl -X POST ${A}/merchant/qris \\`,
+        `  -H "x-api-key: ${K}" \\`,
+        `  -H "Content-Type: application/json" \\`,
+        `  -d '{`,
+        `    "provider": "shopee",`,
+        `    "qris": "${QRIS_SAMPLE}",`,
+        `    "set_active": true`,
+        `  }'`,
+      ].join('\n'),
+      js: `const res = await fetch("${A}/merchant/qris", {\n  method: "POST",\n  headers: { "x-api-key": "${K}", "Content-Type": "application/json" },\n  body: JSON.stringify({\n    provider: "shopee",\n    qris: QRIS_STRING,\n    set_active: true,\n  }),\n});\nconst data = await res.json();`,
+      php: `<?php\n$ch = curl_init("${A}/merchant/qris");\ncurl_setopt_array($ch, [\n  CURLOPT_POST => true,\n  CURLOPT_RETURNTRANSFER => true,\n  CURLOPT_HTTPHEADER => ["x-api-key: ${K}", "Content-Type: application/json"],\n  CURLOPT_POSTFIELDS => json_encode([\n    "provider" => "shopee",\n    "qris" => $QRIS_STRING,\n    "set_active" => true,\n  ]),\n]);\n$data = json_decode(curl_exec($ch), true);`,
+      python: `import requests\n\nres = requests.post(\n    "${A}/merchant/qris",\n    headers={"x-api-key": "${K}"},\n    json={\n        "provider": "shopee",\n        "qris": QRIS_STRING,\n        "set_active": True,\n    },\n    timeout=10,\n)\ndata = res.json()`,
+    },
+
+    settings: {
+      curl: [
+        `curl -X POST ${A}/merchant/settings \\`,
+        `  -H "x-api-key: ${K}" \\`,
+        `  -H "Content-Type: application/json" \\`,
+        `  -d '{`,
+        `    "amount_mode": "hybrid",`,
+        `    "fee_enabled": false,`,
+        `    "unique_enabled": false,`,
+        `    "unique_digits": 3`,
+        `  }'`,
+      ].join('\n'),
+      js: `const res = await fetch("${A}/merchant/settings", {\n  method: "POST",\n  headers: { "x-api-key": "${K}", "Content-Type": "application/json" },\n  body: JSON.stringify({\n    amount_mode: "hybrid",\n    fee_enabled: false,\n    unique_enabled: false,\n    unique_digits: 3,\n  }),\n});\nconst data = await res.json();`,
+      php: `<?php\n$ch = curl_init("${A}/merchant/settings");\ncurl_setopt_array($ch, [\n  CURLOPT_POST => true,\n  CURLOPT_RETURNTRANSFER => true,\n  CURLOPT_HTTPHEADER => ["x-api-key: ${K}", "Content-Type: application/json"],\n  CURLOPT_POSTFIELDS => json_encode([\n    "amount_mode" => "hybrid",\n    "fee_enabled" => false,\n    "unique_enabled" => false,\n    "unique_digits" => 3,\n  ]),\n]);\n$data = json_decode(curl_exec($ch), true);`,
+      python: `import requests\n\nres = requests.post(\n    "${A}/merchant/settings",\n    headers={"x-api-key": "${K}"},\n    json={\n        "amount_mode": "hybrid",\n        "fee_enabled": False,\n        "unique_enabled": False,\n        "unique_digits": 3,\n    },\n    timeout=10,\n)\ndata = res.json()`,
+    },
+
+    order: {
+      curl: [
+        `curl -X POST ${A}/orders \\`,
+        `  -H "x-api-key: ${K}" \\`,
+        `  -H "Content-Type: application/json" \\`,
+        `  -d '{`,
+        `    "base_amount": 25000,`,
+        `    "ttl_seconds": 900,`,
+        `    "reference_id": "INV-2026-0001",`,
+        `    "customer_name": "Budi",`,
+        `    "notify_url": "https://app.example.com/webhook/malawali"`,
+        `  }'`,
+      ].join('\n'),
+      js: `const res = await fetch("${A}/orders", {\n  method: "POST",\n  headers: { "x-api-key": "${K}", "Content-Type": "application/json" },\n  body: JSON.stringify({\n    base_amount: 25000,\n    ttl_seconds: 900,\n    reference_id: "INV-2026-0001",\n    customer_name: "Budi",\n    notify_url: "https://app.example.com/webhook/malawali",\n  }),\n});\nconst order = await res.json();\nconsole.log(order.id, order.pay_amount); // ord_… 25000`,
+      php: `<?php\n$ch = curl_init("${A}/orders");\ncurl_setopt_array($ch, [\n  CURLOPT_POST => true,\n  CURLOPT_RETURNTRANSFER => true,\n  CURLOPT_HTTPHEADER => ["x-api-key: ${K}", "Content-Type: application/json"],\n  CURLOPT_POSTFIELDS => json_encode([\n    "base_amount" => 25000,\n    "ttl_seconds" => 900,\n    "reference_id" => "INV-2026-0001",\n    "customer_name" => "Budi",\n    "notify_url" => "https://app.example.com/webhook/malawali",\n  ]),\n]);\n$order = json_decode(curl_exec($ch), true);`,
+      python: `import requests\n\norder = requests.post(\n    "${A}/orders",\n    headers={"x-api-key": "${K}"},\n    json={\n        "base_amount": 25000,\n        "ttl_seconds": 900,\n        "reference_id": "INV-2026-0001",\n        "customer_name": "Budi",\n        "notify_url": "https://app.example.com/webhook/malawali",\n    },\n    timeout=10,\n).json()\nprint(order["id"], order["pay_amount"])`,
+    },
+
+    status: {
+      curl: [
+        `curl -X GET ${A}/orders/ord_7f3k9d2m \\`,
+        `  -H "x-api-key: ${K}"`,
+      ].join('\n'),
+      js: `const res = await fetch("${A}/orders/ord_7f3k9d2m", {\n  headers: { "x-api-key": "${K}" },\n});\nconst order = await res.json();\nif (order.status === "paid") {\n  // kirim produk / aktifkan layanan\n}`,
+      php: `<?php\n$ch = curl_init("${A}/orders/ord_7f3k9d2m");\ncurl_setopt_array($ch, [\n  CURLOPT_RETURNTRANSFER => true,\n  CURLOPT_HTTPHEADER => ["x-api-key: ${K}"],\n]);\n$order = json_decode(curl_exec($ch), true);\nif ($order["status"] === "paid") {\n  // aktifkan layanan\n}`,
+      python: `import requests\n\norder = requests.get(\n    "${A}/orders/ord_7f3k9d2m",\n    headers={"x-api-key": "${K}"},\n    timeout=10,\n).json()\nif order["status"] == "paid":\n    pass  # aktifkan layanan`,
+    },
+
+    cancel: {
+      curl: [
+        `curl -X POST ${A}/orders/ord_7f3k9d2m/cancel \\`,
+        `  -H "x-api-key: ${K}"`,
+      ].join('\n'),
+      js: `const res = await fetch("${A}/orders/ord_7f3k9d2m/cancel", {\n  method: "POST",\n  headers: { "x-api-key": "${K}" },\n});\nconst order = await res.json(); // status: "cancelled"`,
+      php: `<?php\n$ch = curl_init("${A}/orders/ord_7f3k9d2m/cancel");\ncurl_setopt_array($ch, [\n  CURLOPT_POST => true,\n  CURLOPT_RETURNTRANSFER => true,\n  CURLOPT_HTTPHEADER => ["x-api-key: ${K}"],\n]);\n$order = json_decode(curl_exec($ch), true);`,
+      python: `import requests\n\norder = requests.post(\n    "${A}/orders/ord_7f3k9d2m/cancel",\n    headers={"x-api-key": "${K}"},\n    timeout=10,\n).json()`,
+    },
+
+    webhook: {
+      curl: [
+        `# Verifikasi signature webhook (Node.js)`,
+        `const crypto = require("crypto");`,
+        ``,
+        `const ts = req.headers["x-malawali-timestamp"];`,
+        `const raw = JSON.stringify(req.body);`,
+        `const expected = crypto`,
+        `  .createHmac("sha256", process.env.MALAWALI_WEBHOOK_SECRET)`,
+        `  .update(ts + "." + raw)`,
+        `  .digest("hex");`,
+        ``,
+        `const ok = req.headers["x-malawali-signature"] === "v1=" + expected;`,
+      ].join('\n'),
+      js: `app.post("/webhook/malawali", express.json(), (req, res) => {\n  const ts = req.headers["x-malawali-timestamp"];\n  const raw = JSON.stringify(req.body);\n  const expected = crypto\n    .createHmac("sha256", process.env.MALAWALI_WEBHOOK_SECRET)\n    .update(ts + "." + raw)\n    .digest("hex");\n\n  if (req.headers["x-malawali-signature"] !== "v1=" + expected) {\n    return res.status(401).end();\n  }\n\n  const { event, data } = req.body;\n  if (event === "order.paid") {\n    // aktifkan pesanan ${'{'}data.id${'}'}\n  }\n  res.json({ ok: true });\n});`,
+      php: `<?php\n$ts = $_SERVER["HTTP_X_MALAWALI_TIMESTAMP"];\n$raw = file_get_contents("php://input");\n$expected = hash_hmac("sha256", $ts . "." . $raw, getenv("MALAWALI_WEBHOOK_SECRET"));\n\nif (($_SERVER["HTTP_X_MALAWALI_SIGNATURE"] ?? "") !== "v1=" . $expected) {\n  http_response_code(401);\n  exit;\n}\n\n$payload = json_decode($raw, true);\nif ($payload["event"] === "order.paid") {\n  // aktifkan pesanan\n}\necho json_encode(["ok" => true]);`,
+      python: `import hmac, hashlib, os\nfrom flask import Flask, request, abort\n\napp = Flask(__name__)\n\n@app.post("/webhook/malawali")\ndef malawali_webhook():\n    ts = request.headers["x-malawali-timestamp"]\n    raw = request.get_data(as_text=True)\n    expected = hmac.new(\n        os.environ["MALAWALI_WEBHOOK_SECRET"].encode(),\n        f"{ts}.{raw}".encode(),\n        hashlib.sha256,\n    ).hexdigest()\n    if request.headers.get("x-malawali-signature") != f"v1={expected}":\n        abort(401)\n    payload = request.get_json()\n    return {"ok": True}`,
+    },
+  };
+
+  const endpoints = [
+    { method: 'POST', path: '/api/merchant/qris', desc: 'Simpan / perbarui QRIS statis merchant dan set aktif.' },
+    { method: 'POST', path: '/api/merchant/settings', desc: 'Atur mode nominal: fee, kode unik random, atau hybrid.' },
+    { method: 'POST', path: '/api/orders', desc: 'Buat order LIVE baru dan dapatkan QR nominal + checkout URL.' },
+    { method: 'GET', path: '/api/orders/:id', desc: 'Cek status order terbaru milik project ini.' },
+    { method: 'POST', path: '/api/orders/:id/cancel', desc: 'Batalkan order yang masih berstatus pending.' },
+  ];
+
+  const statusRows = [
+    { key: 'pending', tone: 'warn', desc: 'QR sudah dibuat, menunggu pembayaran dalam batas TTL.' },
+    { key: 'paid', tone: 'success', desc: 'Pembayaran cocok dan order sudah dikonfirmasi.' },
+    { key: 'expired', tone: 'muted', desc: 'Batas waktu habis sebelum pembayaran terdeteksi.' },
+    { key: 'cancelled', tone: 'danger', desc: 'Order dibatalkan merchant / sistem.' },
+  ];
+%>
+
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">Bantuan</span>
+    <h1>Documentation</h1>
+    <p class="page-header__sub">Integrasi REST API <%= brand.name %>: project, API key, order, status, dan webhook.</p>
+  </div>
+  <div class="page-header__actions">
+    <a class="btn btn--secondary" href="/settings?tab=api-key">
+      <%- include('../../partials/icon', { name: 'key' }) %>
+      <span>API Key</span>
+    </a>
+    <a class="btn btn--primary" href="/qris">
+      <%- include('../../partials/icon', { name: 'qris' }) %>
+      <span>Buat Test Order</span>
+    </a>
+  </div>
+</div>
+
+<div class="docs-layout">
+  <nav class="docs-nav" aria-label="Bagian dokumentasi">
+    <span class="docs-nav__title">Bagian</span>
+    <% sections.forEach((item) => { %>
+      <a
+        href="/documentation?bagian=<%= item.key %>"
+        <%= section === item.key ? 'aria-current="page" style="background:var(--primary-soft);color:var(--primary);font-weight:600"' : '' %>
+      ><%= item.label %></a>
+    <% }) %>
+  </nav>
+
+  <div class="docs-body">
+    <section class="card">
+      <div class="card__body">
+        <span class="badge badge--primary"><%= brand.name %> &middot; REST API v1</span>
+        <h2 style="margin-top:12px">Integrasi Pembayaran QRIS</h2>
+        <p class="muted">
+          Buat order dari server Anda, tampilkan QR ke pelanggan, lalu terima callback
+          <code>order.paid</code> setelah pembayaran terdeteksi otomatis. API Key dibuat per Project
+          dan hanya aktif selama langganan berjalan.
+        </p>
+
+        <div class="kv">
+          <div class="kv__row">
+            <span class="kv__key">Base URL</span>
+            <span class="kv__val"><code><%= A %></code></span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Autentikasi</span>
+            <span class="kv__val">Header <code>x-api-key: pk_live_…</code></span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Format</span>
+            <span class="kv__val">JSON (request &amp; response)</span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Webhook</span>
+            <span class="kv__val">HMAC-SHA256, retry maksimal 3&times;, timeout 10 detik</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <%# ── Mulai Integrasi ── %>
+    <% if (section === 'mulai') { %>
+      <section class="docs-block">
+        <h2>Mulai Integrasi</h2>
+        <p>Alur singkat dari akun kosong sampai order pertama yang otomatis berstatus PAID.</p>
+
+        <div class="numbered">
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">01 &middot; Aktifkan langganan</span>
+              <span class="numbered__desc">API Key dan REST API hanya terbuka bila langganan akun aktif. <a href="/subscription">Buka Langganan</a>.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">02 &middot; Siapkan QRIS &amp; deteksi</span>
+              <span class="numbered__desc">Simpan QRIS statis merchant dan pastikan deteksi pembayaran berstatus Siap di halaman QRIS.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">03 &middot; Buat Project &amp; API Key</span>
+              <span class="numbered__desc">Pisahkan integrasi per Project. Buat <code>pk_live_…</code> dari <a href="/settings?tab=api-key">Pengaturan &rarr; API Key</a>.</span>
+            </div>
+          </div>
+          <div class="numbered__item">
+            <div class="numbered__body">
+              <span class="numbered__title">04 &middot; Buat order &amp; terima webhook</span>
+              <span class="numbered__desc">Panggil <code>POST /api/orders</code>, tampilkan QR, lalu proses <code>order.paid</code> di server Anda.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="notice notice--info">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'info' }) %>
+            <span>Jangan taruh API Key di browser</span>
+          </div>
+          <p>Semua panggilan API harus dari server aplikasi Anda. API Key yang bocor dapat dipakai pihak lain untuk membuat order atas nama project Anda.</p>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Base URL & Autentikasi ── %>
+    <% if (section === 'auth') { %>
+      <section class="docs-block">
+        <h2>Base URL &amp; Autentikasi</h2>
+        <p>Semua endpoint memakai Base URL <code><%= A %></code> dan header <code>x-api-key</code> berisi API Key project <code>pk_live_…</code>.</p>
+
+        <div class="card">
+          <div class="card__head"><div class="card__head-title"><span class="section-label">Header</span><h2>Autentikasi</h2></div></div>
+          <div class="card__body card__body--tight">
+            <div class="kv">
+              <div class="kv__row"><span class="kv__key">x-api-key</span><span class="kv__val">Wajib. API Key project (<code>pk_live_…</code>).</span></div>
+              <div class="kv__row"><span class="kv__key">Content-Type</span><span class="kv__val"><code>application/json</code> untuk request berbody.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <%- include('../../partials/code-tabs', { samples: code.auth, codeGroupName: 'docs-lang' }) %>
+      </section>
+    <% } %>
+
+    <%# ── Project ── %>
+    <% if (section === 'project') { %>
+      <section class="docs-block">
+        <h2>Project</h2>
+        <p>
+          Project adalah wadah integrasi di dalam satu akun. Setiap Project memiliki API Key dan
+          Webhook sendiri, serta memisahkan riwayat order. Buat satu Project per aplikasi/bot agar
+          kredensial dan data tidak bercampur.
+        </p>
+
+        <div class="kv">
+          <div class="kv__row">
+            <span class="kv__key">Satu akun</span>
+            <span class="kv__val">Boleh memiliki banyak Project.</span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Default Project</span>
+            <span class="kv__val">Project pertama dipakai untuk endpoint pengaturan akun dan tidak dapat dihapus.</span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Berbagi level akun</span>
+            <span class="kv__val">Koneksi Shopee/GoPay, Listener, dan QRIS aktif dipakai bersama seluruh Project.</span>
+          </div>
+        </div>
+
+        <div class="row">
+          <a class="btn btn--primary" href="/projects">Kelola Projects</a>
+          <a class="btn btn--secondary" href="/settings?tab=api-key">Buat API Key</a>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── API Key ── %>
+    <% if (section === 'api-key') { %>
+      <section class="docs-block">
+        <h2>API Key</h2>
+        <p>
+          API Key dibuat per Project dan hanya ditampilkan sekali saat dibuat atau dirotasi.
+          Simpan di environment server Anda, jangan commit ke repository.
+        </p>
+
+        <div class="kv">
+          <div class="kv__row"><span class="kv__key">Format</span><span class="kv__val"><code>pk_live_</code> diikuti string acak.</span></div>
+          <div class="kv__row"><span class="kv__key">Syarat</span><span class="kv__val">Email terverifikasi + langganan aktif.</span></div>
+          <div class="kv__row"><span class="kv__key">Rotasi</span><span class="kv__val">Membuat key baru otomatis menonaktifkan key lama.</span></div>
+        </div>
+
+        <div class="notice notice--danger">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'alert' }) %>
+            <span>Simpan sebagai rahasia</span>
+          </div>
+          <p>Gunakan variabel environment seperti <code>MALAWALI_API_KEY</code>. Jangan pernah menaruh API Key pada kode frontend, aplikasi mobile yang bisa didekompilasi, atau repositori publik.</p>
+        </div>
+
+        <div class="row">
+          <a class="btn btn--primary" href="/settings?tab=api-key">Kelola API Key</a>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Daftar Endpoint ── %>
+    <% if (section === 'endpoints') { %>
+      <section class="docs-block">
+        <h2>Daftar Endpoint</h2>
+        <p>Lima endpoint utama yang dipakai untuk mengelola QRIS, pengaturan nominal, dan order.</p>
+
+        <div class="card">
+          <div class="card__body card__body--tight" style="padding:0">
+            <% endpoints.forEach((ep) => { %>
+              <div class="endpoint-row">
+                <span class="method-tag method-tag--<%= ep.method.toLowerCase() %>"><%= ep.method %></span>
+                <div>
+                  <code><%= ep.path %></code>
+                  <p><%= ep.desc %></p>
+                </div>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+
+        <div class="notice notice--warn">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'bulb' }) %>
+            <span>TTL order</span>
+          </div>
+          <p>Nilai <code>ttl_seconds</code> yang valid 60&ndash;86400 detik. Setelah TTL habis, order otomatis berstatus <code>expired</code>.</p>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Setup QRIS ── %>
+    <% if (section === 'qris') { %>
+      <section class="docs-block">
+        <h2>Setup QRIS</h2>
+        <p>Simpan QRIS statis merchant lewat API agar order LIVE berikutnya memakainya.</p>
+
+        <div class="card">
+          <div class="card__head">
+            <div class="card__head-title"><span class="section-label">Endpoint</span><h2>POST /api/merchant/qris</h2></div>
+            <span class="method-tag method-tag--post">POST</span>
+          </div>
+          <div class="card__body card__body--tight">
+            <div class="kv">
+              <div class="kv__row"><span class="kv__key">provider</span><span class="kv__val">Kunci provider QRIS (mis. <code>shopee</code>, <code>gopay</code>).</span></div>
+              <div class="kv__row"><span class="kv__key">qris</span><span class="kv__val">String QRIS statis merchant.</span></div>
+              <div class="kv__row"><span class="kv__key">set_active</span><span class="kv__val">Boolean, jadikan QRIS ini yang dipakai order LIVE.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <%- include('../../partials/code-tabs', { samples: code.qris, codeGroupName: 'docs-lang' }) %>
+      </section>
+    <% } %>
+
+    <%# ── Settings ── %>
+    <% if (section === 'settings') { %>
+      <section class="docs-block">
+        <h2>Settings</h2>
+        <p>Atur cara <%= brand.name %> menentukan nominal akhir (<code>pay_amount</code>).</p>
+
+        <div class="card">
+          <div class="card__head">
+            <div class="card__head-title"><span class="section-label">Endpoint</span><h2>POST /api/merchant/settings</h2></div>
+            <span class="method-tag method-tag--post">POST</span>
+          </div>
+          <div class="card__body card__body--tight">
+            <div class="kv">
+              <div class="kv__row"><span class="kv__key">amount_mode</span><span class="kv__val"><code>fee</code> &middot; <code>unique</code> &middot; <code>hybrid</code></span></div>
+              <div class="kv__row"><span class="kv__key">fee_enabled</span><span class="kv__val">Boolean, tambahkan fee ke nominal.</span></div>
+              <div class="kv__row"><span class="kv__key">unique_enabled</span><span class="kv__val">Boolean, tambahkan kode unik random.</span></div>
+              <div class="kv__row"><span class="kv__key">unique_digits</span><span class="kv__val">Jumlah digit kode unik (1&ndash;3).</span></div>
+            </div>
+          </div>
+        </div>
+
+        <%- include('../../partials/code-tabs', { samples: code.settings, codeGroupName: 'docs-lang' }) %>
+      </section>
+    <% } %>
+
+    <%# ── Mode Hybrid ── %>
+    <% if (section === 'hybrid') { %>
+      <section class="docs-block">
+        <h2>Mode Hybrid</h2>
+        <p>
+          Mode Hybrid mematikan Fee dan Kode Unik random. Nominal tetap bulat selama tidak ada
+          order PENDING lain dengan nominal akhir yang sama. Bila terjadi bentrok, sistem menambahkan
+          minimum +1, +2, +3 dan seterusnya sampai nominal unik.
+        </p>
+
+        <div class="card">
+          <div class="card__body card__body--tight">
+            <table class="mini-table">
+              <thead>
+                <tr><th>Order</th><th class="num">Nominal dibayar</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Order A &middot; base Rp10.000</td><td class="num">Rp10.000</td></tr>
+                <tr><td>Order B &middot; A masih PENDING</td><td class="num">Rp10.001</td></tr>
+                <tr><td>Order C &middot; A+B masih PENDING</td><td class="num">Rp10.002</td></tr>
+                <tr><td>A sudah PAID / EXPIRED / CANCELLED</td><td class="num">Rp10.000 tersedia lagi</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="notice notice--info">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'info' }) %>
+            <span>Pencocokan tiga tahap</span>
+          </div>
+          <p>
+            Sistem mencocokkan pembayaran berdasarkan nominal persis, lalu memeriksa window waktu,
+            lalu mengklaim <code>provider_transaction_id</code> satu kali. Satu bukti bayar tidak
+            dapat dipakai untuk dua order.
+          </p>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Buat Order ── %>
+    <% if (section === 'order') { %>
+      <section class="docs-block">
+        <h2>Buat Order</h2>
+        <p>Endpoint utama untuk memulai pembayaran. Response berisi <code>pay_amount</code>, string QRIS, dan checkout URL.</p>
+
+        <div class="card">
+          <div class="card__head">
+            <div class="card__head-title"><span class="section-label">Endpoint</span><h2>POST /api/orders</h2></div>
+            <span class="method-tag method-tag--post">POST</span>
+          </div>
+          <div class="card__body card__body--tight">
+            <div class="kv">
+              <div class="kv__row"><span class="kv__key">base_amount</span><span class="kv__val">Wajib. Bilangan bulat rupiah &gt; 0.</span></div>
+              <div class="kv__row"><span class="kv__key">ttl_seconds</span><span class="kv__val">Opsional. 60&ndash;86400, default 900.</span></div>
+              <div class="kv__row"><span class="kv__key">reference_id</span><span class="kv__val">Opsional. ID unik dari sistem Anda.</span></div>
+              <div class="kv__row"><span class="kv__key">customer_name</span><span class="kv__val">Opsional. Nama pelanggan.</span></div>
+              <div class="kv__row"><span class="kv__key">notify_url</span><span class="kv__val">Opsional. Webhook khusus order ini (prioritas tertinggi).</span></div>
+            </div>
+          </div>
+        </div>
+
+        <%- include('../../partials/code-tabs', { samples: code.order, codeGroupName: 'docs-lang' }) %>
+
+        <div class="card">
+          <div class="card__head"><div class="card__head-title"><span class="section-label">Contoh Response</span><h2>200 OK</h2></div></div>
+          <div class="card__body card__body--tight">
+            <div class="code">
+              <div class="code__head">
+                <div class="code__tabs"><span class="code__tab is-active">JSON</span></div>
+                <button class="code__copy" type="button">
+                  <%- include('../../partials/icon', { name: 'copy', strokeWidth: 1.9 }) %>
+                  <span>Copy</span>
+                </button>
+              </div>
+              <pre><code>{
+  "id": "ord_7f3k9d2m",
+  "status": "pending",
+  "base_amount": 25000,
+  "pay_amount": 25000,
+  "qris_string": "00020101021126610014COM.GO-JEK.WWW...",
+  "checkout_url": "https://pay.example.com/pay/ord_7f3k9d2m",
+  "expires_at": "2026-09-27T10:15:00.000Z",
+  "reference_id": "INV-2026-0001"
+}</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Cek Status ── %>
+    <% if (section === 'status') { %>
+      <section class="docs-block">
+        <h2>Cek Status</h2>
+        <p>Ambil kondisi order terbaru. Cocokkan juga dengan callback webhook yang Anda terima.</p>
+
+        <div class="card">
+          <div class="card__head">
+            <div class="card__head-title"><span class="section-label">Endpoint</span><h2>GET /api/orders/:id</h2></div>
+            <span class="method-tag method-tag--get">GET</span>
+          </div>
+          <div class="card__body card__body--tight">
+            <p class="muted text-sm">Order hanya dapat diakses oleh project yang membuatnya. Project lain akan menerima <code>order_not_found</code>.</p>
+          </div>
+        </div>
+
+        <%- include('../../partials/code-tabs', { samples: code.status, codeGroupName: 'docs-lang' }) %>
+      </section>
+    <% } %>
+
+    <%# ── Cancel ── %>
+    <% if (section === 'cancel') { %>
+      <section class="docs-block">
+        <h2>Cancel</h2>
+        <p>Batalkan order selama masih berstatus <code>pending</code>.</p>
+
+        <div class="card">
+          <div class="card__head">
+            <div class="card__head-title"><span class="section-label">Endpoint</span><h2>POST /api/orders/:id/cancel</h2></div>
+            <span class="method-tag method-tag--post">POST</span>
+          </div>
+          <div class="card__body card__body--tight">
+            <p class="muted text-sm">Bila order sudah <code>paid</code>, <code>expired</code>, atau <code>cancelled</code>, akan dikembalikan error <code>order_not_pending</code> (409).</p>
+          </div>
+        </div>
+
+        <%- include('../../partials/code-tabs', { samples: code.cancel, codeGroupName: 'docs-lang' }) %>
+      </section>
+    <% } %>
+
+    <%# ── Status Order ── %>
+    <% if (section === 'status-order') { %>
+      <section class="docs-block">
+        <h2>Status Order</h2>
+        <p>Empat status yang mungkin diterima pada field <code>status</code>.</p>
+
+        <div class="card">
+          <div class="card__body card__body--tight">
+            <table class="mini-table">
+              <thead>
+                <tr><th>Status</th><th>Penjelasan</th></tr>
+              </thead>
+              <tbody>
+                <% statusRows.forEach((row) => { %>
+                  <tr>
+                    <td><span class="badge badge--<%= row.tone %> badge--dot"><%= row.key %></span></td>
+                    <td><%= row.desc %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="notice notice--warn">
+          <div class="notice__head">
+            <%- include('../../partials/icon', { name: 'clock' }) %>
+            <span>Order expired tidak dapat dibayar</span>
+          </div>
+          <p>Buat order baru bila pelanggan terlambat membayar. Jangan memakai ulang QR order yang sudah expired.</p>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Webhook ── %>
+    <% if (section === 'webhook') { %>
+      <section class="docs-block">
+        <h2>Webhook</h2>
+        <p>
+          <%= brand.name %> mengirim event ke URL webhook project saat status order berubah. Setiap
+          request ditandatangani dengan HMAC-SHA256 agar dapat diverifikasi.
+        </p>
+
+        <div class="card">
+          <div class="card__head"><div class="card__head-title"><span class="section-label">Header</span><h2>Signature</h2></div></div>
+          <div class="card__body card__body--tight">
+            <div class="kv">
+              <div class="kv__row"><span class="kv__key">x-malawali-timestamp</span><span class="kv__val">Timestamp pengiriman (detik/detik-ISO).</span></div>
+              <div class="kv__row"><span class="kv__key">x-malawali-signature</span><span class="kv__val"><code>v1=&lt;hex&gt;</code> hasil <code>HMAC_SHA256(secret, timestamp + "." + raw_body)</code>.</span></div>
+              <div class="kv__row"><span class="kv__key">Prioritas URL</span><span class="kv__val"><code>order.webhook_url</code> &rarr; Webhook Project &rarr; <code>notify_url</code> akun.</span></div>
+              <div class="kv__row"><span class="kv__key">Retry</span><span class="kv__val">Maksimal 3&times; dengan timeout 10 detik per percobaan.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <%- include('../../partials/code-tabs', { samples: code.webhook, codeGroupName: 'docs-lang' }) %>
+
+        <div class="card">
+          <div class="card__head"><div class="card__head-title"><span class="section-label">Contoh Payload</span><h2>order.paid</h2></div></div>
+          <div class="card__body card__body--tight">
+            <div class="code">
+              <div class="code__head">
+                <div class="code__tabs"><span class="code__tab is-active">JSON</span></div>
+                <button class="code__copy" type="button">
+                  <%- include('../../partials/icon', { name: 'copy', strokeWidth: 1.9 }) %>
+                  <span>Copy</span>
+                </button>
+              </div>
+              <pre><code>{
+  "event": "order.paid",
+  "created_at": "2026-09-27T09:30:11.000Z",
+  "data": {
+    "id": "ord_7f3k9d2m",
+    "status": "paid",
+    "base_amount": 25000,
+    "pay_amount": 25000,
+    "reference_id": "INV-2026-0001",
+    "paid_at": "2026-09-27T09:30:10.000Z"
+  }
+}</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+    <% } %>
+
+    <%# ── Error ── %>
+    <% if (section === 'error') { %>
+      <section class="docs-block">
+        <h2>Error</h2>
+        <p>
+          Error dikembalikan dalam JSON <code>{ "error": "&lt;code&gt;", "message": "&lt;penjelasan&gt;" }</code>.
+          Gunakan tabel berikut sebagai referensi penanganan.
+        </p>
+
+        <div class="card">
+          <div class="card__body card__body--tight">
+            <table class="mini-table">
+              <thead>
+                <tr><th>HTTP</th><th>Kode</th><th>Pesan</th></tr>
+              </thead>
+              <tbody>
+                <% Object.entries(apiErrors || {}).forEach(([codeKey, meta]) => { %>
+                  <tr>
+                    <td class="num"><span class="badge badge--<%= meta.status >= 500 ? 'danger' : (meta.status >= 400 ? 'warn' : 'muted') %>"><%= meta.status %></span></td>
+                    <td><code><%= codeKey %></code></td>
+                    <td><%= meta.message %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="row">
+          <a class="btn btn--primary" href="/documentation?bagian=order">Lihat Contoh Order</a>
+          <a class="btn btn--secondary" href="/settings?tab=webhook">Kelola Webhook</a>
+        </div>
+      </section>
+    <% } %>
+  </div>
+</div>

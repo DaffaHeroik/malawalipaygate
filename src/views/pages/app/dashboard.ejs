@@ -1,0 +1,276 @@
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">Overview</span>
+    <h1>Dashboard</h1>
+    <p class="page-header__sub">Ringkasan transaksi dan delivery record <%= brand.name %>.</p>
+  </div>
+  <div class="page-header__actions">
+    <a class="btn btn--secondary" href="/dashboard/export.csv?status=<%= status %>">
+      <%- include('../../partials/icon', { name: 'download' }) %>
+      <span>Export CSV</span>
+    </a>
+    <a class="btn btn--primary" href="/qris">
+      <%- include('../../partials/icon', { name: 'plus' }) %>
+      <span>Buat Order</span>
+    </a>
+  </div>
+</div>
+
+<%# ── Ringkasan status akun ── %>
+<section class="card">
+  <div class="status-bar">
+    <div class="status-bar__item">
+      <span class="status-bar__label">Langganan</span>
+      <% if (subscription.active) { %>
+        <span class="status-line"><span class="status-dot status-dot--success"></span> Aktif</span>
+        <span class="muted text-xs">sampai <%= helpers.formatDateTime(subscription.until) %></span>
+      <% } else { %>
+        <span class="status-line"><span class="status-dot status-dot--danger"></span> Tidak Aktif</span>
+        <a class="text-xs" href="/subscription">Aktifkan</a>
+      <% } %>
+    </div>
+
+    <div class="status-bar__item">
+      <span class="status-bar__label">Shopee</span>
+      <% const shopee = constants.CONNECTION_STATUS[detection.provider === 'shopee' ? detection.connectionStatus : 'disconnected']; %>
+      <span class="status-line">
+        <span class="status-dot status-dot--<%= shopee.tone === 'success' ? 'success' : shopee.tone === 'danger' ? 'danger' : 'warn' %>"></span>
+        <%= shopee.label %>
+      </span>
+      <a class="text-xs" href="/shopee">Kelola</a>
+    </div>
+
+    <div class="status-bar__item">
+      <span class="status-bar__label">GoPay</span>
+      <% const gopay = constants.CONNECTION_STATUS[detection.provider === 'gopay' ? detection.connectionStatus : 'disconnected']; %>
+      <span class="status-line">
+        <span class="status-dot status-dot--<%= gopay.tone === 'success' ? 'success' : gopay.tone === 'danger' ? 'danger' : 'warn' %>"></span>
+        <%= gopay.label %>
+      </span>
+      <a class="text-xs" href="/gopay">Kelola</a>
+    </div>
+
+    <div class="status-bar__item">
+      <span class="status-bar__label">QRIS</span>
+      <% if (detection.provider) { %>
+        <span class="status-line"><span class="status-dot status-dot--success"></span> Aktif</span>
+        <span class="muted text-xs"><%= detection.providerLabel %></span>
+      <% } else { %>
+        <span class="status-line"><span class="status-dot"></span> Belum Dipasang</span>
+        <a class="text-xs" href="/qris">Pasang</a>
+      <% } %>
+    </div>
+
+    <div class="status-bar__item">
+      <span class="status-bar__label">Deteksi Pembayaran</span>
+      <span class="status-line">
+        <span class="status-dot status-dot--<%= detection.ready ? 'success' : 'warn' %>"></span>
+        <%= detection.ready ? 'Siap' : 'Belum siap' %>
+      </span>
+      <a class="text-xs" href="/listener">Listener</a>
+    </div>
+  </div>
+</section>
+
+<%# ── Metrik utama ── %>
+<section class="metric-grid">
+  <article class="metric">
+    <div class="metric__top">
+      <span class="metric__label">Total Order</span>
+      <span class="metric__icon"><%- include('../../partials/icon', { name: 'list' }) %></span>
+    </div>
+    <div>
+      <div class="metric__value"><%= helpers.formatNumber(stats.total) %></div>
+      <span class="metric__sub">Realtime total order</span>
+    </div>
+  </article>
+
+  <article class="metric metric--paid">
+    <div class="metric__top">
+      <span class="metric__label">Paid</span>
+      <span class="metric__icon"><%- include('../../partials/icon', { name: 'check' }) %></span>
+    </div>
+    <div>
+      <div class="metric__value"><%= helpers.formatNumber(stats.paid) %></div>
+      <span class="metric__sub">Status berhasil</span>
+    </div>
+  </article>
+
+  <article class="metric metric--pending">
+    <div class="metric__top">
+      <span class="metric__label">Pending</span>
+      <span class="metric__icon"><%- include('../../partials/icon', { name: 'clock' }) %></span>
+    </div>
+    <div>
+      <div class="metric__value"><%= helpers.formatNumber(stats.pending) %></div>
+      <span class="metric__sub">Menunggu pembayaran</span>
+    </div>
+  </article>
+
+  <article class="metric metric--cancelled">
+    <div class="metric__top">
+      <span class="metric__label">Revenue</span>
+      <span class="metric__icon"><%- include('../../partials/icon', { name: 'chart' }) %></span>
+    </div>
+    <div>
+      <div class="metric__value metric__value--money"><%= helpers.formatRupiah(stats.revenue) %></div>
+      <span class="metric__sub">Total paid revenue</span>
+    </div>
+  </article>
+</section>
+
+<%# ── Grafik 14 hari ── %>
+<section class="card">
+  <div class="card__head">
+    <div class="card__head-title">
+      <span class="section-label">14 Hari Terakhir</span>
+      <h2>Order Performance</h2>
+    </div>
+  </div>
+
+  <div class="chart__summary">
+    <span><b><%= helpers.formatNumber(seriesTotals.total) %></b> order</span>
+    <span><b><%= helpers.formatNumber(seriesTotals.paid) %></b> paid</span>
+    <span><b><%= helpers.formatRupiah(seriesTotals.revenue) %></b> revenue</span>
+  </div>
+
+  <div class="chart" data-chart="chart-orders" role="figure" aria-label="Grafik order 14 hari terakhir"></div>
+  <script type="application/json" id="chart-orders" nonce="<%= cspNonce %>">
+    <%- JSON.stringify({
+      labels: seriesLabels,
+      ariaLabel: 'Grafik total order dan order paid selama 14 hari terakhir',
+      series: [
+        { key: 'total', label: 'Total Order', color: '#174d9b', values: series.map((d) => d.total) },
+        { key: 'paid', label: 'Paid', color: '#12784a', values: series.map((d) => d.paid) }
+      ]
+    }) %>
+  </script>
+</section>
+
+<%# ── Riwayat order ── %>
+<section class="card">
+  <div class="card__head">
+    <div class="card__head-title">
+      <span class="section-label">Aktivitas</span>
+      <h2>Riwayat Order</h2>
+      <p>Order terbaru dari seluruh project.</p>
+    </div>
+    <a class="btn btn--ghost btn--sm" href="/projects">
+      <span>Project</span>
+      <%- include('../../partials/icon', { name: 'chevronRight' }) %>
+    </a>
+  </div>
+
+  <div class="toolbar">
+    <a class="chip<%= status === 'all' ? ' is-active' : '' %>" href="/dashboard?status=all">
+      Semua <span class="chip__count"><%= statusCounts.all %></span>
+    </a>
+    <% constants.ORDER_STATUS_LIST.forEach((key) => { %>
+      <a class="chip<%= status === key ? ' is-active' : '' %>" href="/dashboard?status=<%= key %>">
+        <%= constants.ORDER_STATUS[key].label %>
+        <span class="chip__count"><%= statusCounts[key] %></span>
+      </a>
+    <% }) %>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID Transaksi</th>
+          <th>Waktu</th>
+          <th class="num">Nominal</th>
+          <th>Checkout Via</th>
+          <th>Ref ID</th>
+          <th>Status</th>
+          <th class="num">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (!rows.length) { %>
+          <tr>
+            <td colspan="7" class="table__empty">
+              Belum ada order untuk filter ini.
+            </td>
+          </tr>
+        <% } %>
+
+        <% rows.forEach((order) => { %>
+          <% const meta = constants.ORDER_STATUS[order.status] || constants.ORDER_STATUS.pending; %>
+          <tr>
+            <td>
+              <span class="cell-id">
+                <a href="/orders/<%= order.id %>"><%= order.id %></a>
+                <span class="provider-badge"><%= order.provider %></span>
+              </span>
+            </td>
+            <td class="nowrap text-sm"><%= helpers.formatDateTime(order.createdAt) %></td>
+            <td class="num nowrap"><%= helpers.formatRupiah(order.payAmount) %></td>
+            <td class="text-sm"><%= String(constants.PROVIDER_LABEL[order.provider] || order.provider).toUpperCase() %></td>
+            <td class="text-sm mono"><%= order.reference || '-' %></td>
+            <td><span class="badge badge--<%= order.status %> badge--dot"><%= meta.label %></span></td>
+            <td class="num">
+              <a class="btn btn--ghost btn--xs" href="/orders/<%= order.id %>">
+                Detail
+                <%- include('../../partials/icon', { name: 'chevronRight' }) %>
+              </a>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+  <%- include('../../partials/pagination', { pagination, baseUrl: `/dashboard?status=${status}` }) %>
+</section>
+
+<%# ── Pengingat keamanan ── %>
+<section class="security-note" data-security-note>
+  <div class="security-note__head">
+    <%- include('../../partials/icon', { name: 'alert' }) %>
+    <span>Pengingat Keamanan QRIS</span>
+  </div>
+
+  <p>
+    Untuk menjaga QRIS tetap aman, kami menyarankan tetap memakai <strong>Mode Hybrid</strong>.
+    Pastikan:
+  </p>
+
+  <ul>
+    <li>Fee transaksi: <strong><%= settings.feePercent > 0 && settings.shopeeMode === 'fee' ? `AKTIF (${settings.feePercent}%)` : 'NONAKTIF' %></strong></li>
+    <li>Kode unik: <strong><%= settings.shopeeUniqueEnabled ? 'AKTIF' : 'NONAKTIF' %></strong></li>
+  </ul>
+
+  <p>
+    Penggunaan fee dan kode unik secara terus-menerus dapat membuat pola transaksi terdeteksi
+    sebagai aktivitas mencurigakan, sesuai ketentuan dan sistem keamanan masing-masing merchant.
+    Gunakan nominal transaksi asli dan Mode Hybrid untuk meminimalkan risiko pembatasan pada
+    merchant QRIS.
+  </p>
+
+  <div>
+    <button class="btn btn--secondary btn--sm" type="button" data-security-dismiss>
+      <%- include('../../partials/icon', { name: 'check' }) %>
+      <span>Saya sudah baca</span>
+    </button>
+  </div>
+</section>
+
+<script nonce="<%= cspNonce %>">
+  // Sembunyikan pengingat keamanan setelah user menandai "sudah baca".
+  (() => {
+    const KEY = 'malawali.securityNoteDismissed';
+    const note = document.querySelector('[data-security-note]');
+    if (!note) return;
+
+    try {
+      if (localStorage.getItem(KEY) === '1') note.hidden = true;
+    } catch (_) { /* ignore */ }
+
+    note.querySelector('[data-security-dismiss]')?.addEventListener('click', () => {
+      note.hidden = true;
+      try { localStorage.setItem(KEY, '1'); } catch (_) { /* ignore */ }
+      window.MalawaliToast?.('Pengingat keamanan ditutup.', 'success');
+    });
+  })();
+</script>

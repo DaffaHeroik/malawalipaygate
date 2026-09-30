@@ -1,0 +1,5 @@
+<% if (flashes && flashes.length) { %>
+  <% flashes.forEach((flash) => { %>
+    <div data-flash="<%= flash.message %>" data-flash-type="<%= flash.type === 'error' ? 'danger' : flash.type %>" hidden></div>
+  <% }) %>
+<% } %>

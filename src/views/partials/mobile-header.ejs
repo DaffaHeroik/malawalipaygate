@@ -1,0 +1,23 @@
+<div class="mobile-header">
+  <button
+    class="theme-toggle"
+    type="button"
+    data-sidebar-open
+    aria-label="Buka menu"
+    aria-controls="app-sidebar"
+    aria-expanded="false"
+  >
+    <%- include('icon', { name: 'menu' }) %>
+  </button>
+
+  <a class="mobile-header__brand" href="/dashboard" aria-label="<%= brand.name %> Dashboard">
+    <%- include('logo') %>
+  </a>
+
+  <div class="mobile-header__actions">
+    <%- include('theme-toggle', { className: '' }) %>
+    <a class="mobile-header__avatar" href="/settings" aria-label="Pengaturan">
+      <%= helpers.initials(user ? user.name : '?') %>
+    </a>
+  </div>
+</div>

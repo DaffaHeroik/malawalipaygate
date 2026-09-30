@@ -1,0 +1,181 @@
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">Akun</span>
+    <h1>Langganan</h1>
+    <p class="page-header__sub">
+      Aktifkan API Key dan REST API <%= brand.name %> untuk integrasi bot, website, atau aplikasi Anda.
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a class="btn btn--secondary" href="/documentation">
+      <%- include('../../partials/icon', { name: 'code' }) %>
+      <span>Baca Dokumentasi</span>
+    </a>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card__head">
+    <div class="card__head-title">
+      <span class="section-label">Status Langganan</span>
+      <% if (subscription.active) { %>
+        <h2>Langganan aktif</h2>
+      <% } else { %>
+        <h2>Langganan tidak aktif</h2>
+      <% } %>
+    </div>
+    <span class="badge badge--<%= subscription.active ? 'success' : 'danger' %> badge--dot">
+      <%= subscription.active ? 'Aktif' : 'Nonaktif' %>
+    </span>
+  </div>
+
+  <div class="card__body">
+    <% if (subscription.active) { %>
+      <p class="muted">
+        Akses API aktif sampai <strong><%= helpers.formatDateTime(subscription.until) %></strong>
+        (<%= subscription.daysLeft %> hari lagi).
+      </p>
+    <% } else { %>
+      <p class="muted">
+        API key dan REST API terkunci sementara. Payment tools dan test order tetap bisa dipakai.
+      </p>
+    <% } %>
+
+    <div class="row">
+      <a class="btn btn--primary" href="/qris">
+        <%- include('../../partials/icon', { name: 'qris' }) %>
+        <span>Buka QRIS Checkout</span>
+      </a>
+      <a class="btn btn--secondary" href="/settings?tab=api-key">
+        <%- include('../../partials/icon', { name: 'key' }) %>
+        <span>Kelola API Key</span>
+      </a>
+    </div>
+
+    <div class="alert alert--info">
+      <%- include('../../partials/icon', { name: 'mail' }) %>
+      <div class="alert__body">
+        Pengingat masa aktif dikirim otomatis ke email akun pada H-7, H-3, H-1, dan saat langganan berakhir.
+      </div>
+    </div>
+  </div>
+</section>
+
+<div data-tabs class="stack" data-tab-group="subscription" data-tab-default="<%= tab %>">
+  <div class="tabs" role="tablist">
+    <button class="tab" type="button" role="tab" data-tab="plans">Paket Langganan</button>
+    <button class="tab" type="button" role="tab" data-tab="history">Riwayat Pembayaran</button>
+  </div>
+
+  <%# ── Paket ── %>
+  <div class="tab-panel" data-tab-panel="plans" role="tabpanel">
+    <div class="stack">
+      <div>
+        <span class="section-label">Paket Langganan</span>
+        <h2>Pilih periode yang sesuai</h2>
+        <p class="muted text-sm">
+          Harga paket diambil langsung dari pengaturan <%= brand.name %>. Nominal checkout akhir
+          dapat mengikuti fee atau kode unik QRIS billing.
+        </p>
+      </div>
+
+      <div class="plan-grid">
+        <% plans.forEach((plan) => { %>
+          <article class="plan-card<%= plan.highlight ? ' plan-card--highlight' : '' %>">
+            <% if (plan.highlight) { %><span class="plan-card__badge">Paling Hemat</span><% } %>
+            <span class="plan-card__period"><%= plan.label %></span>
+            <div class="plan-card__price"><%= helpers.formatRupiah(plan.price) %></div>
+            <span class="plan-card__per">&asymp; <%= helpers.formatRupiah(plan.perMonth) %> / bulan</span>
+            <p class="plan-card__desc"><%= plan.description %></p>
+
+            <% if (plan.saving) { %>
+              <span class="plan-card__save">Hemat <%= helpers.formatRupiah(plan.saving) %> dibanding harga 1 bulan</span>
+            <% } %>
+
+            <ul class="check-list">
+              <% plan.features.forEach((feature) => { %>
+                <li>
+                  <%- include('../../partials/icon', { name: 'check' }) %>
+                  <span><%= feature %></span>
+                </li>
+              <% }) %>
+            </ul>
+
+            <form method="post" action="/subscription/buy">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <input type="hidden" name="months" value="<%= plan.months %>">
+              <button class="btn btn--<%= plan.highlight ? 'primary' : 'secondary' %> btn--block" type="submit">
+                Beli Sekarang
+              </button>
+            </form>
+          </article>
+        <% }) %>
+      </div>
+
+      <div class="card">
+        <div class="card__body">
+          <span class="section-label">Semua paket langganan membuka</span>
+          <ul class="check-list grid-2" style="margin-top:12px">
+            <li><%- include('../../partials/icon', { name: 'check' }) %><span>API Key per Project</span></li>
+            <li><%- include('../../partials/icon', { name: 'check' }) %><span>REST API <%= brand.name %></span></li>
+            <li><%- include('../../partials/icon', { name: 'check' }) %><span>Integrasi API</span></li>
+            <li><%- include('../../partials/icon', { name: 'check' }) %><span>Akses sesuai masa aktif</span></li>
+            <li><%- include('../../partials/icon', { name: 'check' }) %><span>Dokumentasi API</span></li>
+            <li><%- include('../../partials/icon', { name: 'check' }) %><span>Dashboard monitoring</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%# ── Riwayat ── %>
+  <div class="tab-panel" data-tab-panel="history" role="tabpanel">
+    <div class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <span class="section-label">Riwayat</span>
+          <h2>Riwayat Pembayaran</h2>
+          <p>Pembayaran langganan yang pernah dibuat dari akun ini.</p>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table" style="min-width:680px">
+          <thead>
+            <tr>
+              <th>Paket</th>
+              <th class="num">Harga</th>
+              <th class="num">Total Checkout</th>
+              <th>Status</th>
+              <th>Dibuat</th>
+              <th class="num">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (!payments.length) { %>
+              <tr><td colspan="6" class="table__empty">Belum ada pembayaran langganan.</td></tr>
+            <% } %>
+
+            <% payments.forEach((payment) => { %>
+              <% const meta = constants.ORDER_STATUS[payment.status] || constants.ORDER_STATUS.pending; %>
+              <tr>
+                <td class="strong"><%= payment.planMonths %> Bulan</td>
+                <td class="num"><%= helpers.formatRupiah(payment.price) %></td>
+                <td class="num"><%= helpers.formatRupiah(payment.totalCheckout) %></td>
+                <td><span class="badge badge--<%= payment.status %> badge--dot"><%= meta.label %></span></td>
+                <td class="text-sm nowrap"><%= helpers.formatDateTime(payment.createdAt) %></td>
+                <td class="num">
+                  <% if (payment.orderId) { %>
+                    <a class="btn btn--ghost btn--xs" href="/orders/<%= payment.orderId %>">Detail</a>
+                  <% } else { %>
+                    <span class="dim text-xs">-</span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,85 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Tema gelap. Diaktifkan lewat <html data-theme="dark">.
+   Hanya menimpa token warna — struktur & ukuran tidak berubah.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg-app: #0f1319;
+  --bg-app-alt: #121720;
+  --bg-card: #171d26;
+  --bg-subtle: #1c232e;
+  --bg-inset: #212a36;
+
+  --primary: #4d8ae8;
+  --primary-hover: #3f7ad6;
+  --primary-active: #3568bd;
+  --primary-soft: rgba(77, 138, 232, 0.14);
+  --primary-soft-strong: rgba(77, 138, 232, 0.22);
+  --on-primary: #08111f;
+
+  --accent: #f7c23c;
+  --accent-soft: rgba(247, 194, 60, 0.16);
+
+  --text: #e8ecf3;
+  --text-strong: #dbe2ec;
+  --text-muted: #a7b1c0;
+  --text-dim: #8b95a6;
+  --text-faint: #6f7889;
+  --text-on-dark: #eef1f6;
+
+  --border: #2b3441;
+  --border-strong: #3a4553;
+  --border-input: #333d4c;
+  --border-soft: #252d39;
+  --border-focus: #4d8ae8;
+
+  --success: #4ec38a;
+  --success-bg: rgba(78, 195, 138, 0.13);
+  --success-border: rgba(78, 195, 138, 0.32);
+
+  --warn: #e2b257;
+  --warn-bg: rgba(226, 178, 87, 0.13);
+  --warn-border: rgba(226, 178, 87, 0.32);
+
+  --danger: #f2827a;
+  --danger-bg: rgba(242, 130, 122, 0.13);
+  --danger-border: rgba(242, 130, 122, 0.32);
+
+  --info: #6ea6ee;
+  --info-bg: rgba(110, 166, 238, 0.13);
+  --info-border: rgba(110, 166, 238, 0.32);
+
+  --neutral-bg: #212a36;
+  --neutral-border: #333d4c;
+  --neutral-text: #a7b1c0;
+
+  --status-pending: #e2b257;
+  --status-pending-bg: rgba(226, 178, 87, 0.13);
+  --status-paid: #4ec38a;
+  --status-paid-bg: rgba(78, 195, 138, 0.13);
+  --status-expired: #a7b1c0;
+  --status-expired-bg: #212a36;
+  --status-cancelled: #f2827a;
+  --status-cancelled-bg: rgba(242, 130, 122, 0.13);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-raised: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 18px 48px rgba(0, 0, 0, 0.6);
+  --shadow-focus: 0 0 0 3px rgba(77, 138, 232, 0.28);
+}
+
+/* Transisi halus saat tema ditukar (dimatikan kalau user minta reduced motion) */
+html.theme-transition,
+html.theme-transition * {
+  transition: background-color var(--t-slow), border-color var(--t-slow), color var(--t-slow) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transition,
+  html.theme-transition * {
+    transition: none !important;
+  }
+}

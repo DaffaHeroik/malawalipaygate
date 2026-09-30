@@ -1,0 +1,424 @@
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">QRIS Checkout</span>
+    <h1>QRIS</h1>
+    <p class="page-header__sub">
+      Satu akun memakai satu QRIS aktif. <%= brand.name %> menyiapkan deteksi pembayaran otomatis
+      sesuai sumber pembayaran yang digunakan.
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a class="btn btn--secondary" href="/listener">
+      <%- include('../../../partials/icon', { name: 'broadcast' }) %>
+      <span>Malawali Listener</span>
+    </a>
+  </div>
+</div>
+
+<%# ══ LANGKAH 1 ══ %>
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">Langkah 1</span>
+    <h1 style="font-size:var(--fs-xl)">QRIS &amp; Pembayaran Otomatis</h1>
+    <p class="page-header__sub">Pasang satu QRIS aktif dan pastikan jalur deteksi pembayaran siap.</p>
+  </div>
+</div>
+
+<div class="split">
+  <%# ── Kartu QRIS aktif ── %>
+  <section class="card">
+    <div class="card__head">
+      <div class="card__head-title">
+        <span class="section-label">01</span>
+        <h2>QRIS Aktif</h2>
+      </div>
+      <% if (activeQris) { %>
+        <span class="badge badge--success badge--dot"><%= constants.QRIS_STATUS.active.label %></span>
+      <% } else { %>
+        <span class="badge badge--muted">Belum ada</span>
+      <% } %>
+    </div>
+
+    <div class="card__body">
+      <% if (activeQris) { %>
+        <div class="detection-panel">
+          <div class="row row-tight">
+            <span class="avatar avatar--soft"><%= helpers.initials(activeQris.merchantName) %></span>
+            <span class="grow">
+              <strong style="display:block"><%= activeQris.merchantName %></strong>
+              <span class="muted text-sm">
+                <%= constants.PROVIDER_LABEL[activeQris.provider] || activeQris.provider %>
+                &middot; <%= activeQris.merchantCity %>
+              </span>
+            </span>
+            <span class="provider-badge"><%= activeQris.qrisType %></span>
+          </div>
+
+          <div class="detection-row">
+            <span class="detection-row__label">Status</span>
+            <span class="status-line">
+              <span class="status-dot status-dot--success"></span> Tersimpan
+            </span>
+          </div>
+        </div>
+
+        <div class="detection-panel">
+          <span class="section-label">Deteksi Pembayaran</span>
+
+          <div class="detection-row">
+            <span class="detection-row__label">Status</span>
+            <span class="status-line">
+              <span class="status-dot status-dot--<%= detection.ready ? 'success' : 'warn' %>"></span>
+              <%= detection.ready ? 'Siap' : 'Belum siap' %>
+            </span>
+          </div>
+
+          <div class="detection-row">
+            <span class="detection-row__label">Koneksi merchant</span>
+            <span class="status-line">
+              <span class="status-dot status-dot--<%= detection.merchantConnected ? 'success' : 'warn' %>"></span>
+              <%= detection.merchantConnected ? 'Terhubung' : 'Tidak terhubung' %>
+            </span>
+          </div>
+
+          <div class="detection-row">
+            <span class="detection-row__label">Malawali Listener</span>
+            <span class="status-line">
+              <span class="status-dot status-dot--<%= detection.listenerReady ? 'success' : 'warn' %>"></span>
+              <%= detection.listenerReady ? 'Siap' : 'Belum siap' %>
+            </span>
+          </div>
+
+          <% if (detection.note) { %>
+            <div class="alert alert--warn">
+              <%- include('../../../partials/icon', { name: 'alert' }) %>
+              <div class="alert__body"><%= detection.note %></div>
+            </div>
+          <% } %>
+
+          <div class="row row-tight">
+            <a class="btn btn--secondary btn--sm" href="/listener">Kelola Listener</a>
+            <% if (activeQris.provider === 'shopee') { %>
+              <a class="btn btn--secondary btn--sm" href="/shopee">Shopee Partner</a>
+            <% } else if (activeQris.provider === 'gopay') { %>
+              <a class="btn btn--secondary btn--sm" href="/gopay">GoPay Merchant</a>
+            <% } %>
+          </div>
+        </div>
+
+        <form method="post" action="/qris/delete">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn--danger btn--sm" type="submit" data-confirm="Hapus QRIS aktif?">
+            <%- include('../../../partials/icon', { name: 'trash' }) %>
+            <span>Hapus QRIS Aktif</span>
+          </button>
+        </form>
+      <% } else { %>
+        <div class="empty-state">
+          <span class="empty-state__icon"><%- include('../../../partials/icon', { name: 'qris' }) %></span>
+          <h3>Belum ada QRIS aktif</h3>
+          <p>Pasang QRIS statis merchant dari provider yang Anda gunakan.</p>
+        </div>
+      <% } %>
+    </div>
+  </section>
+
+  <%# ── Pasang / ganti QRIS ── %>
+  <section class="card">
+    <div class="card__head">
+      <div class="card__head-title">
+        <h2>Pasang / Ganti QRIS</h2>
+        <p>Upload baru akan mengganti QRIS aktif sebelumnya.</p>
+      </div>
+    </div>
+
+    <form method="post" action="/qris" class="card__body" enctype="multipart/form-data">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+      <label class="field">
+        <span class="field__label">Provider QRIS</span>
+        <select class="select" name="provider">
+          <% providers.forEach((provider) => { %>
+            <option value="<%= provider.key %>"><%= provider.label %></option>
+          <% }) %>
+        </select>
+        <span class="field__hint">
+          Pilih provider manual hanya jika deteksi otomatis belum mengenali QRIS. Jika hasil deteksi
+          berbeda dari pilihan Anda, QRIS tidak akan disimpan.
+        </span>
+      </label>
+
+      <div class="form-grid">
+        <label class="field">
+          <span class="field__label">Nama Merchant</span>
+          <input class="input" type="text" name="merchant_name" value="<%= activeQris ? activeQris.merchantName : '' %>" maxlength="60">
+        </label>
+        <label class="field">
+          <span class="field__label">Kota</span>
+          <input class="input" type="text" name="merchant_city" value="<%= activeQris ? activeQris.merchantCity : '' %>" maxlength="60">
+        </label>
+      </div>
+
+      <label class="dropzone">
+        <%- include('../../../partials/icon', { name: 'download' }) %>
+        <span class="strong text-sm">Upload gambar QRIS statis</span>
+        <span class="text-xs">PNG atau JPG, maksimal 2 MB</span>
+        <input type="file" name="qris_image" accept="image/png,image/jpeg">
+      </label>
+
+      <label class="field">
+        <span class="field__label">String QRIS Statis</span>
+        <textarea class="textarea" name="qris_string" rows="4" placeholder="00020101021126...6304ABCD" required><%= activeQris ? activeQris.qrisString : '' %></textarea>
+        <span class="field__hint">
+          Gunakan QRIS statis merchant asli, bukan QR sekali pakai atau QR order yang sudah memiliki nominal.
+        </span>
+      </label>
+
+      <div>
+        <button class="btn btn--primary" type="submit">
+          <%- include('../../../partials/icon', { name: 'qris' }) %>
+          <span>Upload &amp; Jadikan Aktif</span>
+        </button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<%# ── Pengaturan pembayaran ── %>
+<section class="card">
+  <div class="card__head">
+    <div class="card__head-title">
+      <h2>Pengaturan Nominal &amp; Pembayaran</h2>
+      <p>Berlaku di tingkat akun, dipakai semua project.</p>
+    </div>
+  </div>
+
+  <form method="post" action="/qris/settings" class="card__body" data-qris-preview>
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <div class="form-grid">
+      <label class="field">
+        <span class="field__label">Fee (%)</span>
+        <input class="input" type="number" name="fee_percent" min="0" max="100" step="0.1" value="<%= settings.feePercent %>">
+        <span class="field__hint">Persentase fee 0&ndash;100. Dibulatkan ke rupiah terdekat.</span>
+      </label>
+
+      <div class="field">
+        <span class="field__label">Digit Kode</span>
+        <div class="segmented">
+          <% [1, 2, 3].forEach((digit) => { %>
+            <label>
+              <input type="radio" name="unique_digits" value="<%= digit %>" <%= settings.uniqueDigits === digit ? 'checked' : '' %>>
+              <span><%= digit %></span>
+            </label>
+          <% }) %>
+        </div>
+        <span class="field__hint">Jumlah digit kode unik untuk provider yang memakainya.</span>
+      </div>
+
+      <label class="field">
+        <span class="field__label">Aktif (menit)</span>
+        <input class="input" type="number" name="order_ttl" min="1" max="1440" value="<%= Math.round(settings.orderTtl / 60) %>">
+        <span class="field__hint">Masa aktif order. Minimal 1 menit, maksimal 1440 menit.</span>
+      </label>
+    </div>
+
+    <div class="field">
+      <span class="field__label">Mode Nominal Shopee Partner</span>
+      <div class="choice-cards">
+        <% amountModes.forEach((mode) => { %>
+          <label class="choice-card">
+            <input type="radio" name="shopee_mode" value="<%= mode.key %>" <%= settings.shopeeMode === mode.key ? 'checked' : '' %>>
+            <span class="choice-card__title"><%= mode.label %></span>
+            <span class="choice-card__desc">
+              <% if (mode.key === 'fee') { %>
+                Menambahkan fee persentase pada setiap order.
+              <% } else if (mode.key === 'unique') { %>
+                Memakai kode unik random agar nominal antar order berbeda.
+              <% } else { %>
+                Nominal asli diprioritaskan. Tambahan +1/+2 hanya saat nominal sedang terpakai.
+              <% } %>
+            </span>
+          </label>
+        <% }) %>
+      </div>
+    </div>
+
+    <div class="notice notice--info">
+      <div class="notice__head">
+        <%- include('../../../partials/icon', { name: 'info' }) %>
+        <span>Mode Hybrid direkomendasikan</span>
+      </div>
+      <p>
+        Saat Mode Hybrid dipilih, Fee dan Kode Unik random dinonaktifkan. Order pertama mencoba
+        nominal persis sesuai base amount; tambahan kecil hanya dipakai jika nominal tersebut
+        sedang dipakai transaksi aktif lain.
+      </p>
+    </div>
+
+    <label class="field">
+      <span class="field__label">Redirect URL Setelah Bayar <span class="muted">(opsional)</span></span>
+      <input class="input" type="url" name="redirect_url" value="<%= settings.redirectUrl %>" placeholder="https://domainkamu.com/pembayaran-selesai" maxlength="2048">
+      <span class="field__hint">Harus HTTPS. Customer diarahkan ke sini setelah order PAID.</span>
+    </label>
+
+    <div class="row">
+      <button class="btn btn--primary" type="submit">
+        <%- include('../../../partials/icon', { name: 'check' }) %>
+        <span>Simpan Pengaturan</span>
+      </button>
+    </div>
+  </form>
+</section>
+
+<%# ══ LANGKAH 2 ══ %>
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">Langkah 2</span>
+    <h1 style="font-size:var(--fs-xl)">Buat Order</h1>
+    <p class="page-header__sub">Pilih project dan nominal, lalu hasilkan QR pembayaran untuk dites.</p>
+  </div>
+</div>
+
+<div class="split split--even">
+  <section class="card">
+    <div class="card__head">
+      <div class="card__head-title">
+        <span class="section-label">02</span>
+        <h2>Order Percobaan</h2>
+      </div>
+      <span class="status-line">
+        <span class="status-dot status-dot--<%= detection.ready ? 'success' : 'warn' %>"></span>
+        <%= detection.providerLabel || 'Provider belum dipilih' %>
+      </span>
+    </div>
+
+    <% if (!detection.ready) { %>
+      <div class="card__body">
+        <div class="alert alert--warn">
+          <%- include('../../../partials/icon', { name: 'alert' }) %>
+          <div class="alert__body">
+            <span class="alert__title">Deteksi pembayaran belum siap</span>
+            Hubungkan akun merchant atau aktifkan aplikasi sumber di <%= brand.name %> Listener
+            sebelum membuat order LIVE.
+          </div>
+        </div>
+      </div>
+    <% } %>
+
+    <form method="post" action="/qris/order" class="card__body" data-qris-preview>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+      <label class="field">
+        <span class="field__label">Project</span>
+        <select class="select" name="project_id">
+          <% projects.forEach((project) => { %>
+            <option value="<%= project.id %>" <%= project.isDefault ? 'selected' : '' %>>
+              <%= project.name %><%= project.isDefault ? ' (Utama)' : '' %>
+            </option>
+          <% }) %>
+        </select>
+        <span class="field__hint">Order ini akan masuk ke riwayat project yang dipilih.</span>
+      </label>
+
+      <div class="form-grid">
+        <label class="field">
+          <span class="field__label">Nominal (Rp) <span class="req">*</span></span>
+          <input class="input" type="text" name="base_amount" inputmode="numeric" placeholder="10000" required data-preview-amount>
+        </label>
+
+        <label class="field">
+          <span class="field__label">Reference <span class="muted">(opsional)</span></span>
+          <input class="input" type="text" name="reference" placeholder="INV-001" maxlength="120">
+        </label>
+
+        <label class="field">
+          <span class="field__label">Aktif (menit) <span class="muted">(opsional)</span></span>
+          <input class="input" type="number" name="ttl_minutes" min="1" max="1440" placeholder="<%= Math.round(settings.orderTtl / 60) %>">
+        </label>
+      </div>
+
+      <input type="hidden" name="fee_percent" value="<%= settings.feePercent %>" data-preview-fee>
+      <input type="hidden" name="mode" value="<%= settings.shopeeMode %>" data-preview-mode>
+      <input type="hidden" name="unique_digits" value="<%= settings.uniqueDigits %>" data-preview-digit>
+
+      <button class="btn btn--primary btn--block" type="submit" <%= detection.ready ? '' : 'disabled' %>>
+        <%- include('../../../partials/icon', { name: 'qris' }) %>
+        <span>Buat QR</span>
+      </button>
+    </form>
+  </section>
+
+  <%# ── Preview nominal ── %>
+  <div class="sticky-col">
+    <section class="card">
+      <div class="card__head">
+        <div class="card__head-title">
+          <h2>Preview Nominal</h2>
+          <p>Perhitungan yang akan dipakai saat order dibuat.</p>
+        </div>
+      </div>
+
+      <div class="card__body">
+        <div class="preview-card">
+          <div class="preview-row">
+            <span>base</span>
+            <b data-preview-out="base">Rp 0</b>
+          </div>
+          <div class="preview-row">
+            <span>fee <span data-preview-fee-label><%= settings.feePercent %></span>%</span>
+            <b data-preview-out="fee">Rp 0</b>
+          </div>
+          <div class="preview-row">
+            <span>kode unik</span>
+            <b data-preview-out="code">0</b>
+          </div>
+          <div class="preview-total">
+            <span>TOTAL</span>
+            <strong data-preview-out="total">Rp 0</strong>
+          </div>
+        </div>
+
+        <div class="preview-card" style="text-align:center">
+          <span class="section-label">Bayar persis</span>
+          <strong style="font-size:var(--fs-2xl);color:var(--primary)" data-preview-out="pay">Rp 0</strong>
+        </div>
+
+        <p class="preview-note" data-preview-out="note">
+          Mode Hybrid aktif. Preview memakai nominal normal. Jika nominal ini sedang dipakai order
+          PENDING, server otomatis memilih tambahan minimum +1/+2/+3... saat QR dibuat.
+        </p>
+      </div>
+    </section>
+
+    <% if (detection.provider) { %>
+      <section class="card">
+        <div class="card__head">
+          <div class="card__head-title">
+            <h2>Deteksi Pembayaran</h2>
+            <p>Status jalur pembayaran yang sedang aktif.</p>
+          </div>
+        </div>
+        <div class="card__body card__body--tight">
+          <div class="detection-panel">
+            <div class="detection-row">
+              <span class="detection-row__label"><%= detection.providerLabel %></span>
+              <span class="badge badge--<%= detection.ready ? 'success' : 'warn' %>">
+                <%= detection.ready ? 'Siap' : 'Belum siap' %>
+              </span>
+            </div>
+            <p class="preview-note">
+              <% if (settings.shopeeMode === 'hybrid' || settings.gopayMode === 'hybrid') { %>
+                Mode Hybrid aktif &middot; Fee OFF &middot; Kode Unik random OFF.
+              <% } else { %>
+                Mode nominal mengikuti pengaturan akun saat ini.
+              <% } %>
+            </p>
+          </div>
+        </div>
+      </section>
+    <% } %>
+  </div>
+</div>
+
+<script src="/js/qris-preview.js" defer></script>

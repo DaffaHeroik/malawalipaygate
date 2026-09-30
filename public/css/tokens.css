@@ -1,0 +1,135 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Design tokens — Malawali Payment
+   Semua warna/bentuk/ukuran didefinisikan di sini. Jangan hardcode nilai
+   di file CSS lain; selalu pakai var(--...).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  color-scheme: light;
+
+  /* ── Warna dasar ── */
+  --bg-app: #f8f9fa;
+  --bg-app-alt: #f5f6f8;
+  --bg-card: #ffffff;
+  --bg-subtle: #f2f4f7;
+  --bg-inset: #eef1f5;
+
+  --primary: #174d9b;
+  --primary-hover: #123d7d;
+  --primary-active: #0f3268;
+  --primary-soft: rgba(23, 77, 155, 0.08);
+  --primary-soft-strong: rgba(23, 77, 155, 0.14);
+  --on-primary: #ffffff;
+
+  --accent: #f5b301;
+  --accent-soft: rgba(245, 179, 1, 0.14);
+
+  /* ── Teks ── */
+  --text: #191c1d;
+  --text-strong: #2f3743;
+  --text-muted: #4e5869;
+  --text-dim: #7b8595;
+  --text-faint: #9aa3b2;
+  --text-on-dark: #eef1f6;
+
+  /* ── Garis ── */
+  --border: #cfd4dd;
+  --border-strong: #b6bdc9;
+  --border-input: #c8cfda;
+  --border-soft: #e2e6ec;
+  --border-focus: #6f98dd;
+
+  /* ── Semantik ── */
+  --success: #12784a;
+  --success-bg: #e6f4ec;
+  --success-border: #a9d7bd;
+
+  --warn: #96650a;
+  --warn-bg: #fdf3df;
+  --warn-border: #ecd39a;
+
+  --danger: #b3261e;
+  --danger-bg: #fdeceb;
+  --danger-border: #f0b5b1;
+
+  --info: #174d9b;
+  --info-bg: #eaf1fb;
+  --info-border: #b9cee9;
+
+  --neutral-bg: #eef1f5;
+  --neutral-border: #d7dce4;
+  --neutral-text: #5b6675;
+
+  /* ── Status order ── */
+  --status-pending: #96650a;
+  --status-pending-bg: #fdf3df;
+  --status-paid: #12784a;
+  --status-paid-bg: #e6f4ec;
+  --status-expired: #5b6675;
+  --status-expired-bg: #eef1f5;
+  --status-cancelled: #b3261e;
+  --status-cancelled-bg: #fdeceb;
+
+  /* ── Bentuk ── */
+  --radius-xs: 6px;
+  --radius-sm: 9px;
+  --radius: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-pill: 999px;
+
+  /* ── Bayangan ── */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-raised: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --shadow-modal: 0 18px 48px rgba(16, 24, 40, 0.22);
+  --shadow-focus: 0 0 0 3px rgba(23, 77, 155, 0.16);
+
+  /* ── Tipografi ── */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --fs-xs: 0.6875rem;   /* 11 */
+  --fs-sm: 0.75rem;     /* 12 */
+  --fs-base: 0.8125rem; /* 13 */
+  --fs-md: 0.875rem;    /* 14 */
+  --fs-lg: 1rem;        /* 16 */
+  --fs-xl: 1.25rem;     /* 20 */
+  --fs-2xl: 1.5625rem;  /* 25 */
+  --fs-3xl: 2rem;       /* 32 */
+  --fs-4xl: 2.75rem;    /* 44 */
+
+  --lh-tight: 1.2;
+  --lh-snug: 1.35;
+  --lh-base: 1.6;
+
+  /* ── Spasi ── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+  --sp-9: 56px;
+
+  /* ── Layout ── */
+  --sidebar-w: 258px;
+  --topbar-h: 62px;
+  --content-max: 1320px;
+  --control-h: 44px;
+  --control-h-sm: 36px;
+
+  /* ── Z-index ── */
+  --z-sidebar: 40;
+  --z-mobile-header: 45;
+  --z-overlay: 60;
+  --z-modal: 70;
+  --z-toast: 90;
+
+  /* ── Transisi ── */
+  --t-fast: 90ms ease;
+  --t-base: 160ms ease;
+  --t-slow: 260ms ease;
+}

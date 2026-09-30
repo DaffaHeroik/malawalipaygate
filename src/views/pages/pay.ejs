@@ -1,0 +1,124 @@
+<%
+  const isPaid = order.status === 'paid';
+  const isExpired = order.status === 'expired';
+  const isCancelled = order.status === 'cancelled';
+  const isActive = order.status === 'pending';
+  const providerLabel = constants.PROVIDER_LABEL[order.provider] || order.provider;
+%>
+
+<div class="pay-wrap">
+  <article class="pay-card" data-countdown-scope>
+    <header class="pay-card__head">
+      <div>
+        <h1>QRIS PAYMENT</h1>
+        <p>Bayar ke <strong><%= order.project?.name || brand.name %></strong></p>
+      </div>
+      <%- include('../partials/icon', { name: 'qris' }) %>
+    </header>
+
+    <% if (isPaid) { %>
+      <div class="pay-success">
+        <span class="pay-success__icon">
+          <%- include('../partials/icon', { name: 'checkCircle', strokeWidth: 1.9 }) %>
+        </span>
+        <h2>Pembayaran Berhasil!</h2>
+        <p class="muted text-sm">Pembayaran telah diterima dan order berhasil dikonfirmasi.</p>
+
+        <div class="kv" style="width:100%;text-align:left">
+          <div class="kv__row">
+            <span class="kv__key">Status</span>
+            <span class="kv__val"><span class="badge badge--paid">PAID</span></span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Nominal</span>
+            <span class="kv__val"><%= helpers.formatRupiah(order.payAmount) %></span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Order</span>
+            <span class="kv__val kv__val--mono"><%= order.id %></span>
+          </div>
+          <div class="kv__row">
+            <span class="kv__key">Merchant</span>
+            <span class="kv__val"><%= order.project?.name || brand.name %></span>
+          </div>
+        </div>
+
+        <a class="btn btn--secondary btn--block" href="<%= order.redirectUrl || '/dashboard' %>">Kembali ke Merchant</a>
+      </div>
+    <% } else { %>
+      <div class="pay-card__body">
+        <div>
+          <span class="pay-amount__label">Nominal Pembayaran</span>
+          <div class="pay-amount__value"><%= helpers.formatRupiah(order.payAmount) %></div>
+          <div class="pay-amount__meta"><%= order.id %> &middot; <%= String(providerLabel).toUpperCase() %></div>
+        </div>
+
+        <div class="pay-qr">
+          <img src="<%= qrDataUrl %>" alt="Kode QRIS untuk pembayaran <%= order.id %>" width="260" height="260">
+        </div>
+
+        <% if (isActive) { %>
+          <div class="pay-countdown">
+            <%- include('../partials/icon', { name: 'clock' }) %>
+            <span>Berlaku <span class="mono" data-countdown="<%= helpers.toIso(order.expiresAt) %>" data-expired-text="EXPIRED">--:--</span></span>
+            <a class="btn btn--ghost btn--xs" href="<%= qrDataUrl %>" download="qris-<%= order.id %>.png" title="Download QRIS">Unduh</a>
+          </div>
+
+          <p class="muted text-sm">
+            Bayar tepat <strong><%= helpers.formatRupiah(order.payAmount) %></strong>.
+            Nominal sudah dibuat unik untuk pencocokan pembayaran otomatis.
+          </p>
+
+          <div class="alert alert--warn" data-expired-note hidden>
+            <%- include('../partials/icon', { name: 'clock' }) %>
+            <div class="alert__body">
+              <span class="alert__title">Order sudah kedaluwarsa</span>
+              Masa aktif order habis sebelum pembayaran ditemukan. Minta merchant membuat order baru.
+            </div>
+          </div>
+        <% } else { %>
+          <div class="alert alert--<%= isCancelled ? 'danger' : 'warn' %>">
+            <%- include('../partials/icon', { name: isCancelled ? 'alert' : 'clock' }) %>
+            <div class="alert__body">
+              <span class="alert__title"><%= isCancelled ? 'Order dibatalkan' : 'Order sudah kedaluwarsa' %></span>
+              <% if (isCancelled) { %>
+                Order ini dibatalkan sebelum pembayaran diterima.
+              <% } else { %>
+                Masa aktif order habis sebelum pembayaran ditemukan. Silakan buat order baru.
+              <% } %>
+            </div>
+          </div>
+        <% } %>
+
+        <ul class="pay-steps">
+          <li><%- include('../partials/icon', { name: 'check' }) %> Buka DANA, e-wallet, atau m-banking yang mendukung QRIS.</li>
+          <li><%- include('../partials/icon', { name: 'check' }) %> Scan QRIS di atas.</li>
+          <li><%- include('../partials/icon', { name: 'check' }) %> Pastikan nominal <%= helpers.formatRupiah(order.payAmount) %>, lalu konfirmasi pembayaran.</li>
+        </ul>
+      </div>
+
+      <footer class="pay-card__foot">
+        Pembayaran diproses aman oleh <%= brand.name %> &middot; Dana masuk langsung ke QRIS merchant.
+      </footer>
+    <% } %>
+  </article>
+</div>
+
+<% if (isActive) { %>
+  <script nonce="<%= cspNonce %>">
+    // Fase UI: ketika countdown habis, tampilkan banner kedaluwarsa tanpa reload.
+    (() => {
+      const scope = document.querySelector('[data-countdown-scope]');
+      const badge = document.querySelector('[data-countdown]');
+      if (!scope || !badge) return;
+
+      const check = () => {
+        if (!badge.classList.contains('is-expired')) return;
+        const note = scope.querySelector('[data-expired-note]');
+        if (note) note.hidden = false;
+      };
+
+      window.setInterval(check, 1000);
+    })();
+  </script>
+<% } %>

@@ -1,0 +1,34 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><%= pageTitle ? `${pageTitle} · ${brand.name}` : `${brand.name} · ${brand.tagline}` %></title>
+<meta name="description" content="<%= typeof metaDescription !== 'undefined' && metaDescription ? metaDescription : `${brand.name} — ${brand.tagline}. Kelola QRIS, order, API key, dan webhook dari satu dashboard.` %>">
+<meta name="theme-color" content="#f8f9fa" data-theme-color>
+
+<%# Bootstrap tema ditulis inline supaya tidak ada kedipan putih sebelum CSS dimuat %>
+<script nonce="<%= cspNonce %>">
+(() => {
+  try {
+    const KEY = '<%= brand.themeStorageKey %>';
+    const saved = localStorage.getItem(KEY);
+    const dark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const root = document.documentElement;
+    root.dataset.theme = dark ? 'dark' : 'light';
+    root.classList.toggle('dark', dark);
+    root.style.colorScheme = dark ? 'dark' : 'light';
+  } catch (_) {}
+})();
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<link rel="icon" href="<%= brand.favicon %>" type="image/svg+xml">
+<link rel="apple-touch-icon" href="<%= brand.favicon %>">
+
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/css/themes.css">
+<link rel="stylesheet" href="/css/base.css">
+<link rel="stylesheet" href="/css/shell.css">
+<link rel="stylesheet" href="/css/components.css">
+<link rel="stylesheet" href="/css/pages.css">

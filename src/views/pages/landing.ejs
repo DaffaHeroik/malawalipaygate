@@ -1,0 +1,204 @@
+<div class="landing">
+  <nav class="landing-nav" aria-label="Navigasi utama">
+    <a href="/" aria-label="<%= brand.name %>">
+      <%- include('../partials/logo') %>
+    </a>
+    <div class="landing-nav__links">
+      <a href="#cara-kerja">Cara Kerja</a>
+      <a href="#fitur">Fitur</a>
+      <a href="#harga">Harga</a>
+      <a href="/documentation">Dokumentasi</a>
+    </div>
+    <div class="landing-nav__actions">
+      <a class="btn btn--secondary btn--sm" href="/login">Masuk</a>
+      <a class="btn btn--primary btn--sm" href="/register">Daftar</a>
+    </div>
+  </nav>
+
+  <section class="landing-hero">
+    <div>
+      <span class="hero-badge">
+        <%- include('../partials/icon', { name: 'bolt', className: '' }) %>
+        Payment Automation
+      </span>
+
+      <h1>Dari QRIS statis jadi <span class="accent">sistem pembayaran otomatis</span>.</h1>
+
+      <p class="landing-hero__copy">
+        <%= brand.name %> membantu bisnismu membuat transaksi unik, memantau pembayaran,
+        dan memproses order secara otomatis — tanpa memindahkan dana ke pihak ketiga.
+      </p>
+
+      <div class="hero-chips">
+        <span class="hero-chip"><%- include('../partials/icon', { name: 'qris' }) %> QRIS dinamis per transaksi</span>
+        <span class="hero-chip"><%- include('../partials/icon', { name: 'check', className: '' }) %> Deteksi pembayaran otomatis</span>
+        <span class="hero-chip"><%- include('../partials/icon', { name: 'webhook' }) %> API &amp; webhook</span>
+      </div>
+
+      <div class="hero-actions">
+        <a class="btn btn--primary btn--lg" href="/register">
+          Mulai Sekarang
+          <%- include('../partials/icon', { name: 'arrowRight' }) %>
+        </a>
+        <a class="btn btn--secondary btn--lg" href="#cara-kerja">Lihat Cara Kerja</a>
+      </div>
+    </div>
+
+    <aside class="hero-visual" aria-label="Alur pembayaran">
+      <span class="section-label">Alur <%= brand.name %></span>
+      <div class="flow-list" style="margin-top:12px">
+        <div class="flow-step">
+          <span class="flow-step__icon"><%- include('../partials/icon', { name: 'qris' }) %></span>
+          <span class="flow-step__body">
+            <span class="flow-step__label">Sumber pembayaran</span>
+            <span class="flow-step__title">QRIS merchant kamu</span>
+          </span>
+          <span class="badge badge--success">Terhubung</span>
+        </div>
+
+        <div class="flow-step">
+          <span class="flow-step__icon"><%- include('../partials/icon', { name: 'bolt' }) %></span>
+          <span class="flow-step__body">
+            <span class="flow-step__label">Order baru</span>
+            <span class="flow-step__title">QRIS dinamis dibuat</span>
+          </span>
+          <span class="flow-step__value">Rp100.327</span>
+        </div>
+
+        <div class="flow-step">
+          <span class="flow-step__icon"><%- include('../partials/icon', { name: 'checkCircle' }) %></span>
+          <span class="flow-step__body">
+            <span class="flow-step__label">Pembayaran terdeteksi</span>
+            <span class="flow-step__title">Webhook dikirim ke sistemmu</span>
+          </span>
+          <span class="badge badge--paid">Paid</span>
+        </div>
+      </div>
+
+      <p class="muted text-sm" style="margin-top:14px">
+        Dana tetap masuk ke akun merchant/provider kamu.
+      </p>
+    </aside>
+  </section>
+
+  <section class="landing-section" style="border-top:0">
+    <div class="landing-section__head">
+      <span class="section-label">Aktivitas <%= brand.name %></span>
+      <h2>Total di seluruh <%= brand.name %></h2>
+      <p>Agregat seluruh merchant dan order yang diproses.</p>
+    </div>
+
+    <div class="stats-strip">
+      <div class="stats-strip__item">
+        <span class="stats-strip__value"><%= helpers.formatRupiah(stats.paidVolume) %></span>
+        <span class="stats-strip__label">Volume PAID</span>
+      </div>
+      <div class="stats-strip__item">
+        <span class="stats-strip__value"><%= stats.successToday %></span>
+        <span class="stats-strip__label">Sukses Hari Ini</span>
+      </div>
+      <div class="stats-strip__item">
+        <span class="stats-strip__value"><%= helpers.formatNumber(stats.successTotal) %></span>
+        <span class="stats-strip__label">Total Sukses</span>
+      </div>
+      <div class="stats-strip__item">
+        <span class="stats-strip__value"><%= helpers.formatNumber(stats.merchants) %></span>
+        <span class="stats-strip__label">Merchant Terdaftar</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="landing-section" id="cara-kerja">
+    <div class="landing-section__head">
+      <span class="section-label">Cara Kerja</span>
+      <h2>Tiga langkah, dari QRIS sampai PAID.</h2>
+      <p>Seluruh alur pembayaran bisa dicoba dari dashboard sebelum berlangganan API.</p>
+    </div>
+
+    <div class="feature-grid">
+      <article class="feature-card">
+        <div class="feature-card__icon"><%- include('../partials/icon', { name: 'qris' }) %></div>
+        <h3>1. Pasang QRIS</h3>
+        <p>Pasang QRIS statis merchant. <%= brand.name %> menyiapkan deteksi pembayaran otomatis sesuai sumber pembayaran yang digunakan.</p>
+      </article>
+
+      <article class="feature-card">
+        <div class="feature-card__icon"><%- include('../partials/icon', { name: 'bolt' }) %></div>
+        <h3>2. Buat Order</h3>
+        <p>Buat order dari dashboard atau REST API. Sistem menghitung nominal akhir dan menghasilkan QRIS dinamis siap dibayar.</p>
+      </article>
+
+      <article class="feature-card">
+        <div class="feature-card__icon"><%- include('../partials/icon', { name: 'checkCircle' }) %></div>
+        <h3>3. Terima PAID</h3>
+        <p>Pembayaran dicocokkan otomatis. Status berubah menjadi PAID dan webhook dikirim ke sistem Anda.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="landing-section" id="fitur">
+    <div class="landing-section__head">
+      <span class="section-label">Fitur</span>
+      <h2>Yang Anda dapatkan</h2>
+    </div>
+
+    <div class="feature-grid">
+      <article class="feature-card">
+        <div class="feature-card__icon"><%- include('../partials/icon', { name: 'projects' }) %></div>
+        <h3>Project terpisah</h3>
+        <p>Pisahkan website, bot, dan aplikasi. Setiap project punya API key, webhook, dan riwayat transaksi sendiri.</p>
+      </article>
+
+      <article class="feature-card">
+        <div class="feature-card__icon"><%- include('../partials/icon', { name: 'bolt' }) %></div>
+        <h3>Mode Hybrid</h3>
+        <p>Nominal asli diprioritaskan. Tambahan +1/+2 hanya dipakai saat nominal sedang terpakai order aktif lain.</p>
+      </article>
+
+      <article class="feature-card">
+        <div class="feature-card__icon"><%- include('../partials/icon', { name: 'broadcast' }) %></div>
+        <h3>Deteksi berlapis</h3>
+        <p>Koneksi API provider dan aplikasi Listener bisa berjalan paralel untuk mengenali pembayaran masuk.</p>
+      </article>
+
+      <article class="feature-card">
+        <div class="feature-card__icon"><%- include('../partials/icon', { name: 'lock' }) %></div>
+        <h3>Webhook bertanda tangan</h3>
+        <p>Setiap callback dilengkapi signature HMAC-SHA256 dan timestamp agar aman dari pemalsuan.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="landing-section" id="harga">
+    <div class="landing-section__head">
+      <span class="section-label">Harga</span>
+      <h2>Langganan sederhana</h2>
+      <p>Payment tools bisa dicoba gratis. Langganan membuka API key dan REST API.</p>
+    </div>
+
+    <div class="pricing-grid">
+      <% plans.forEach((plan) => { %>
+        <article class="plan-card<%= plan.highlight ? ' plan-card--highlight' : '' %>">
+          <% if (plan.highlight) { %><span class="plan-card__badge">Paling Hemat</span><% } %>
+          <span class="plan-card__period"><%= plan.label %></span>
+          <div class="plan-card__price"><%= helpers.formatRupiah(plan.price) %></div>
+          <span class="plan-card__per">&asymp; <%= helpers.formatRupiah(plan.perMonth) %> / bulan</span>
+          <p class="plan-card__desc"><%= plan.description %></p>
+          <% if (plan.saving) { %>
+            <span class="plan-card__save">Hemat <%= helpers.formatRupiah(plan.saving) %> dibanding harga 1 bulan</span>
+          <% } %>
+          <a class="btn btn--primary btn--block" href="/register">Mulai Sekarang</a>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+
+  <footer class="landing-footer">
+    <span>&copy; <%= brand.copyrightYear %> <%= brand.name %> <%= brand.footerNote %>.</span>
+    <span class="row row-tight">
+      <a href="/documentation">Dokumentasi</a>
+      <a href="/privasi">Kebijakan &amp; Privasi</a>
+      <a href="<%= brand.supportUrl %>" target="_blank" rel="noopener">Support</a>
+    </span>
+  </footer>
+</div>

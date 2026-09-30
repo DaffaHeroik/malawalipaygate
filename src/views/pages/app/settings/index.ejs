@@ -1,0 +1,545 @@
+<%
+  const revealedKeyValue = typeof revealedKey !== 'undefined' ? revealedKey : null;
+  const revealedProjectName = typeof revealedProject !== 'undefined' ? revealedProject : null;
+  const revealedSecretValue = typeof revealedSecret !== 'undefined' ? revealedSecret : null;
+  const setup = typeof twoFactorSetup !== 'undefined' ? twoFactorSetup : null;
+  const apiKeyProjects = projects || [];
+%>
+
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow">Akun</span>
+    <h1>Pengaturan</h1>
+    <p class="page-header__sub">Kelola profil, API key, webhook, dan keamanan akun dari satu tempat.</p>
+  </div>
+  <div class="page-header__actions">
+    <a class="btn btn--secondary" href="/documentation">
+      <%- include('../../../partials/icon', { name: 'code' }) %>
+      <span>Documentation</span>
+    </a>
+  </div>
+</div>
+
+<div data-tabs class="stack" data-tab-group="settings" data-tab-default="<%= tab %>">
+  <div class="tabs" role="tablist">
+    <button class="tab" type="button" role="tab" data-tab="profile">Profil</button>
+    <button class="tab" type="button" role="tab" data-tab="api-key">API Key</button>
+    <button class="tab" type="button" role="tab" data-tab="webhook">Webhook</button>
+    <button class="tab" type="button" role="tab" data-tab="password">Password</button>
+    <button class="tab" type="button" role="tab" data-tab="twofa">2FA</button>
+  </div>
+
+  <%# ── Profil ── %>
+  <div class="tab-panel" data-tab-panel="profile" role="tabpanel">
+    <div class="split">
+      <section class="card">
+        <div class="card__head">
+          <div class="card__head-title">
+            <span class="section-label">Identitas</span>
+            <h2>Profil Akun</h2>
+            <p>Nama tampilan dan nama merchant yang muncul di dashboard.</p>
+          </div>
+        </div>
+
+        <form method="post" action="/settings/profile" class="card__body">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+          <label class="field">
+            <span class="field__label">Nama tampilan <span class="req">*</span></span>
+            <input class="input" type="text" name="display_name" maxlength="60" value="<%= user.displayName || user.name || '' %>" required>
+            <span class="field__hint">Nama yang tampil di sidebar dan halaman akun.</span>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Nama merchant</span>
+            <input class="input" type="text" name="merchant_name" maxlength="60" value="<%= user.merchantName || '' %>" placeholder="Contoh: Kizushop">
+            <span class="field__hint">Dipakai sebagai label toko di halaman checkout.</span>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Email</span>
+            <input class="input" type="email" value="<%= user.email %>" disabled>
+            <span class="field__hint">Email dipakai untuk login dan verifikasi. Hubungi support untuk mengubahnya.</span>
+          </label>
+
+          <div class="row">
+            <button class="btn btn--primary" type="submit">
+              <%- include('../../../partials/icon', { name: 'check' }) %>
+              <span>Simpan Perubahan</span>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <div class="sticky-col">
+        <section class="card">
+          <div class="card__head">
+            <div class="card__head-title">
+              <span class="section-label">Status Akun</span>
+              <h2>Verifikasi &amp; Keamanan</h2>
+            </div>
+          </div>
+          <div class="card__body">
+            <div class="row" style="align-items:center">
+              <span class="avatar avatar--lg"><%= user.initials || helpers.initials(user.displayName || user.name) %></span>
+              <div>
+                <strong><%= user.displayName || user.name %></strong><br>
+                <span class="muted text-sm"><%= user.email %></span>
+              </div>
+            </div>
+
+            <div class="kv">
+              <div class="kv__row">
+                <span class="kv__key">Email</span>
+                <span class="kv__val">
+                  <% if (user.emailVerified) { %>
+                    <span class="status-line"><span class="status-dot status-dot--success"></span> Terverifikasi</span>
+                  <% } else { %>
+                    <span class="status-line"><span class="status-dot status-dot--warn"></span> Belum terverifikasi</span>
+                  <% } %>
+                </span>
+              </div>
+              <div class="kv__row">
+                <span class="kv__key">2FA</span>
+                <span class="kv__val"><span class="badge badge--<%= user.twoFactorEnabled ? 'success' : 'muted' %> badge--dot"><%= user.twoFactorEnabled ? 'Aktif' : 'Nonaktif' %></span></span>
+              </div>
+              <div class="kv__row">
+                <span class="kv__key">Bergabung</span>
+                <span class="kv__val"><%= helpers.formatDate(user.joinedAt) %></span>
+              </div>
+              <div class="kv__row">
+                <span class="kv__key">Login terakhir</span>
+                <span class="kv__val"><%= user.lastLoginAt ? helpers.formatDateTime(user.lastLoginAt) : '-' %></span>
+              </div>
+            </div>
+
+            <% if (!user.emailVerified) { %>
+              <form method="post" action="/settings/profile/verify-email">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button class="btn btn--secondary btn--block" type="submit">
+                  <%- include('../../../partials/icon', { name: 'mail' }) %>
+                  <span>Kirim Ulang Verifikasi</span>
+                </button>
+              </form>
+            <% } %>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <%# ── API Key ── %>
+  <div class="tab-panel" data-tab-panel="api-key" role="tabpanel">
+    <div class="stack">
+      <section class="card">
+        <div class="card__head">
+          <div class="card__head-title">
+            <span class="section-label">REST API</span>
+            <h2>API Key per Project</h2>
+            <p>API key adalah identitas project Anda saat memanggil REST API.</p>
+          </div>
+          <span class="badge badge--<%= subscription.active ? 'success' : 'danger' %> badge--dot">
+            Langganan <%= subscription.active ? 'aktif' : 'nonaktif' %>
+          </span>
+        </div>
+
+        <div class="card__body">
+          <% if (!subscription.active) { %>
+            <div class="notice notice--warn">
+              <div class="notice__head">
+                <%- include('../../../partials/icon', { name: 'alert' }) %>
+                <span>Langganan belum aktif</span>
+              </div>
+              <p>
+                Pembuatan dan penggunaan API key memerlukan langganan aktif. Payment tools dan test
+                order manual tetap bisa dipakai.
+              </p>
+              <div><a class="btn btn--primary btn--sm" href="/subscription">Beli Langganan</a></div>
+            </div>
+          <% } %>
+
+          <% if (!canManageApiKey) { %>
+            <div class="notice notice--danger">
+              <div class="notice__head">
+                <%- include('../../../partials/icon', { name: 'lock' }) %>
+                <span>Verifikasi email dulu</span>
+              </div>
+              <p>Verifikasi alamat email akun sebelum membuat API key.</p>
+            </div>
+          <% } %>
+
+          <% if (revealedKeyValue) { %>
+            <div class="alert alert--success">
+              <%- include('../../../partials/icon', { name: 'key' }) %>
+              <div class="alert__body">
+                <span class="alert__title">API key baru<% if (revealedProjectName) { %> untuk <%= revealedProjectName %><% } %> — salin sekarang</span>
+                <div class="copy-field" style="margin-top:8px">
+                  <code><%= revealedKeyValue %></code>
+                  <button class="btn btn--secondary btn--xs" type="button" data-copy-value="<%= revealedKeyValue %>">
+                    <%- include('../../../partials/icon', { name: 'copy' }) %>
+                    <span>Copy</span>
+                  </button>
+                </div>
+                <p class="text-sm" style="margin-top:8px">Key ini hanya ditampilkan sekali. Key lama sudah tidak berlaku.</p>
+              </div>
+            </div>
+          <% } %>
+
+          <div class="kv">
+            <div class="kv__row">
+              <span class="kv__key">Base URL</span>
+              <span class="kv__val"><code><%= apiBaseUrl %></code></span>
+            </div>
+            <div class="kv__row">
+              <span class="kv__key">Header</span>
+              <span class="kv__val"><code>x-api-key: pk_live_…</code></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <div class="card__head-title">
+            <span class="section-label">Daftar Project</span>
+            <h2>Key &amp; Status</h2>
+            <p>Rotasi key per project bila key lama bocor atau ingin diganti.</p>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table" style="min-width:720px">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>API Key</th>
+                <th>Terakhir dipakai</th>
+                <th>Dirotasi</th>
+                <th class="num">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (!apiKeyProjects.length) { %>
+                <tr><td colspan="5" class="table__empty">Belum ada project.</td></tr>
+              <% } %>
+
+              <% apiKeyProjects.forEach((project) => { %>
+                <tr>
+                  <td>
+                    <span class="strong"><%= project.name %></span>
+                    <% if (project.isDefault) { %><span class="badge badge--primary">Utama</span><% } %>
+                  </td>
+                  <td class="mono text-sm">
+                    <%= project.hasApiKey ? project.apiKeyMasked : 'Belum dibuat' %>
+                  </td>
+                  <td class="text-sm nowrap">
+                    <%= project.apiKeyLastUsedAt ? helpers.formatDateTime(project.apiKeyLastUsedAt) : '-' %>
+                  </td>
+                  <td class="text-sm nowrap">
+                    <%= project.apiKeyRotatedAt ? helpers.formatDate(project.apiKeyRotatedAt) : '-' %>
+                  </td>
+                  <td class="num">
+                    <form method="post" action="/settings/api-key/rotate" style="display:inline-flex;gap:6px;align-items:center">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <input type="hidden" name="project_id" value="<%= project.id %>">
+                      <input class="input input--sm" type="password" name="password" placeholder="Password akun" autocomplete="current-password" style="max-width:170px" required>
+                      <button class="btn btn--secondary btn--xs" type="submit" data-confirm="Buat API key baru? Key lama akan langsung tidak berlaku.">
+                        <%- include('../../../partials/icon', { name: 'refresh' }) %>
+                        <span>Rotasi</span>
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <%# ── Webhook ── %>
+  <div class="tab-panel" data-tab-panel="webhook" role="tabpanel">
+    <div class="stack">
+      <section class="card">
+        <div class="card__head">
+          <div class="card__head-title">
+            <span class="section-label">Signature</span>
+            <h2>Webhook Secret</h2>
+            <p>Dipakai untuk memverifikasi HMAC-SHA256 pada setiap callback.</p>
+          </div>
+        </div>
+
+        <div class="card__body">
+          <% if (revealedSecretValue) { %>
+            <div class="alert alert--success">
+              <%- include('../../../partials/icon', { name: 'webhook' }) %>
+              <div class="alert__body">
+                <span class="alert__title">Webhook Secret baru — salin sekarang</span>
+                <div class="copy-field" style="margin-top:8px">
+                  <code><%= revealedSecretValue %></code>
+                  <button class="btn btn--secondary btn--xs" type="button" data-copy-value="<%= revealedSecretValue %>">
+                    <%- include('../../../partials/icon', { name: 'copy' }) %>
+                    <span>Copy</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          <% } %>
+
+          <label class="field">
+            <span class="field__label">Webhook Secret aktif</span>
+            <div class="copy-field">
+              <code><%= settings.webhookSecret %></code>
+              <button class="btn btn--secondary btn--xs" type="button" data-copy-value="<%= settings.webhookSecret %>">
+                <%- include('../../../partials/icon', { name: 'copy' }) %>
+                <span>Copy</span>
+              </button>
+            </div>
+            <span class="field__hint">
+              Dirotasi <%= settings.webhookSecretRotatedAt ? helpers.formatDateTime(settings.webhookSecretRotatedAt) : '-' %>.
+              Rotasi akan membuat secret lama tidak valid.
+            </span>
+          </label>
+
+          <form method="post" action="/settings/webhook/secret">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="btn btn--secondary" type="submit" data-confirm="Rotasi webhook secret? Perbarui di server aplikasi Anda setelah ini.">
+              <%- include('../../../partials/icon', { name: 'refresh' }) %>
+              <span>Rotasi Secret</span>
+            </button>
+          </form>
+
+          <div class="alert alert--info">
+            <%- include('../../../partials/icon', { name: 'info' }) %>
+            <div class="alert__body">
+              Verifikasi: <code>HMAC_SHA256(secret, timestamp + "." + raw_body)</code>, lalu bandingkan
+              dengan header <code>x-malawali-signature: v1=&lt;hex&gt;</code>. Detail di
+              <a href="/documentation?bagian=webhook">Documentation</a>.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <div class="card__head-title">
+            <span class="section-label">Per Project</span>
+            <h2>URL Callback</h2>
+            <p>Setiap project dapat diarahkan ke URL webhook-nya sendiri.</p>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table" style="min-width:760px">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Webhook URL</th>
+                <th class="num">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (!apiKeyProjects.length) { %>
+                <tr><td colspan="3" class="table__empty">Belum ada project.</td></tr>
+              <% } %>
+
+              <% apiKeyProjects.forEach((project) => { %>
+                <tr>
+                  <td class="strong nowrap"><%= project.name %></td>
+                  <td>
+                    <form method="post" action="/settings/webhook/save" class="row row-tight" style="gap:6px">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <input type="hidden" name="project_id" value="<%= project.id %>">
+                      <input class="input input--sm" type="url" name="webhook_url" value="<%= project.webhookUrl || '' %>" placeholder="https://app.example.com/webhook/malawali" style="min-width:260px">
+                      <button class="btn btn--secondary btn--xs" type="submit">Simpan</button>
+                    </form>
+                  </td>
+                  <td class="num">
+                    <form method="post" action="/settings/webhook/test">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <input type="hidden" name="project_id" value="<%= project.id %>">
+                      <button class="btn btn--ghost btn--xs" type="submit" <%= project.webhookUrl ? '' : 'disabled' %>>
+                        Kirim Test
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <%# ── Password ── %>
+  <div class="tab-panel" data-tab-panel="password" role="tabpanel">
+    <div class="split">
+      <section class="card">
+        <div class="card__head">
+          <div class="card__head-title">
+            <span class="section-label">Keamanan</span>
+            <h2>Ubah Password</h2>
+            <p>Gunakan kombinasi minimal 8 karakter dengan huruf besar, kecil, dan angka.</p>
+          </div>
+          <%- include('../../../partials/icon', { name: 'lock' }) %>
+        </div>
+
+        <form method="post" action="/settings/password" class="card__body">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+          <label class="field">
+            <span class="field__label">Password saat ini <span class="req">*</span></span>
+            <input class="input" type="password" name="current_password" autocomplete="current-password" required>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Password baru <span class="req">*</span></span>
+            <input class="input" type="password" name="new_password" autocomplete="new-password" required>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Konfirmasi password baru <span class="req">*</span></span>
+            <input class="input" type="password" name="confirm_password" autocomplete="new-password" required>
+          </label>
+
+          <div class="row">
+            <button class="btn btn--primary" type="submit">
+              <%- include('../../../partials/icon', { name: 'check' }) %>
+              <span>Simpan Password</span>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <div class="sticky-col">
+        <section class="card">
+          <div class="card__body">
+            <span class="section-label">Tips keamanan</span>
+            <ul class="check-list" style="margin-top:10px">
+              <li><%- include('../../../partials/icon', { name: 'check' }) %><span>Jangan pakai password yang sama dengan layanan lain.</span></li>
+              <li><%- include('../../../partials/icon', { name: 'check' }) %><span>Aktifkan 2FA sebagai lapisan tambahan.</span></li>
+              <li><%- include('../../../partials/icon', { name: 'check' }) %><span>Ganti segera bila merasa akun pernah diakses pihak lain.</span></li>
+            </ul>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <%# ── 2FA ── %>
+  <div class="tab-panel" data-tab-panel="twofa" role="tabpanel">
+    <div class="split">
+      <section class="card">
+        <div class="card__head">
+          <div class="card__head-title">
+            <span class="section-label">Authenticator</span>
+            <h2>Autentikasi Dua Faktor</h2>
+            <p>Kode 6 digit dari aplikasi authenticator saat login.</p>
+          </div>
+          <span class="badge badge--<%= user.twoFactorEnabled ? 'success' : 'muted' %> badge--dot">
+            <%= user.twoFactorEnabled ? 'Aktif' : 'Nonaktif' %>
+          </span>
+        </div>
+
+        <div class="card__body">
+          <% if (!user.twoFactorEnabled && !setup) { %>
+            <p class="muted">
+              Aktifkan 2FA untuk menambah lapisan keamanan. Anda akan memindai kode QR dengan
+              aplikasi seperti Google Authenticator atau Authy.
+            </p>
+            <form method="post" action="/settings/twofa/enable">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <button class="btn btn--primary" type="submit">
+                <%- include('../../../partials/icon', { name: 'shield' }) %>
+                <span>Mulai Aktifkan 2FA</span>
+              </button>
+            </form>
+          <% } %>
+
+          <% if (setup) { %>
+            <div class="notice notice--info">
+              <div class="notice__head">
+                <%- include('../../../partials/icon', { name: 'phone' }) %>
+                <span>Pindai QR di aplikasi authenticator</span>
+              </div>
+              <p>Belum selesai sampai Anda memasukkan kode 6 digit di bawah.</p>
+            </div>
+
+            <div class="row" style="align-items:flex-start">
+              <% if (setup.qrDataUrl) { %>
+                <img src="<%= setup.qrDataUrl %>" alt="QR 2FA" width="200" height="200" style="border-radius:12px;border:1px solid var(--border-soft)">
+              <% } %>
+
+              <div class="stack" style="flex:1 1 260px;min-width:0">
+                <label class="field">
+                  <span class="field__label">Secret (isi manual bila perlu)</span>
+                  <div class="copy-field">
+                    <code><%= setup.secret %></code>
+                    <button class="btn btn--secondary btn--xs" type="button" data-copy-value="<%= setup.secret %>">
+                      <%- include('../../../partials/icon', { name: 'copy' }) %>
+                      <span>Copy</span>
+                    </button>
+                  </div>
+                </label>
+
+                <label class="field">
+                  <span class="field__label">URI otpauth</span>
+                  <div class="copy-field">
+                    <code><%= setup.otpauth %></code>
+                    <button class="btn btn--secondary btn--xs" type="button" data-copy-value="<%= setup.otpauth %>">
+                      <%- include('../../../partials/icon', { name: 'copy' }) %>
+                      <span>Copy</span>
+                    </button>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <form method="post" action="/settings/twofa/enable" class="row" style="align-items:flex-end">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <label class="field grow" style="margin:0">
+                <span class="field__label">Kode 6 digit <span class="req">*</span></span>
+                <input class="input" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required>
+              </label>
+              <button class="btn btn--primary" type="submit">
+                <%- include('../../../partials/icon', { name: 'check' }) %>
+                <span>Verifikasi &amp; Aktifkan</span>
+              </button>
+            </form>
+          <% } %>
+
+          <% if (user.twoFactorEnabled) { %>
+            <div class="alert alert--success">
+              <%- include('../../../partials/icon', { name: 'checkCircle' }) %>
+              <div class="alert__body">
+                2FA aktif. Login berikutnya akan meminta kode dari aplikasi authenticator Anda.
+              </div>
+            </div>
+
+            <form method="post" action="/settings/twofa/disable">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <button class="btn btn--ghost" type="submit" data-confirm="Nonaktifkan 2FA? Akun menjadi kurang aman.">
+                <span>Nonaktifkan 2FA</span>
+              </button>
+            </form>
+          <% } %>
+        </div>
+      </section>
+
+      <div class="sticky-col">
+        <section class="card">
+          <div class="card__body">
+            <span class="section-label">Yang perlu disiapkan</span>
+            <ul class="check-list" style="margin-top:10px">
+              <li><%- include('../../../partials/icon', { name: 'check' }) %><span>Aplikasi authenticator di ponsel.</span></li>
+              <li><%- include('../../../partials/icon', { name: 'check' }) %><span>Simpan recovery info di tempat aman.</span></li>
+              <li><%- include('../../../partials/icon', { name: 'check' }) %><span>Jam perangkat harus akurat agar kode TOTP valid.</span></li>
+            </ul>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>

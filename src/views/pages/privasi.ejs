@@ -1,0 +1,127 @@
+<div class="card">
+  <div class="card__head">
+    <div class="card__head-title">
+      <h1>Ketentuan Layanan &amp; Kebijakan Privasi</h1>
+      <p>Berlaku untuk seluruh penggunaan layanan <%= brand.name %>.</p>
+    </div>
+    <span class="badge badge--muted">Versi 2026-09</span>
+  </div>
+
+  <div class="card__body">
+    <p class="muted">
+      Kebijakan ini dapat diperbarui ketika fitur, integrasi, atau proses <%= brand.name %> berubah.
+      Versi terbaru selalu tersedia pada halaman ini. Dengan terus menggunakan layanan setelah
+      pembaruan berlaku, Anda dianggap menyetujui versi terbaru sejauh diperbolehkan oleh ketentuan
+      yang berlaku.
+    </p>
+
+    <hr>
+
+    <section class="stack">
+      <h2>1. Definisi Layanan</h2>
+      <p class="muted">
+        <%= brand.name %> adalah perangkat lunak pemantauan dan otomasi pembayaran QRIS.
+        <%= brand.name %> <strong>tidak</strong> menyediakan akun QRIS, tidak menjadi penerima dana,
+        dan tidak menampung saldo. Dana pembayaran customer masuk langsung ke akun QRIS
+        merchant/provider milik Anda.
+      </p>
+    </section>
+
+    <section class="stack">
+      <h2>2. Kewajiban Merchant</h2>
+      <ul class="stack-sm muted" style="padding-left:20px;list-style:disc">
+        <li>Anda wajib memakai akun QRIS, akun merchant, dan perangkat yang memang Anda miliki atau yang Anda berwenang kelola.</li>
+        <li>Anda bertanggung jawab atas kebenaran nominal, isi order, dan layanan yang dijual kepada customer.</li>
+        <li>Anda bertanggung jawab menjaga kerahasiaan API key, Webhook Secret, password, dan token koneksi provider.</li>
+        <li>Anda tidak boleh memakai layanan untuk kegiatan yang melanggar hukum yang berlaku di Indonesia.</li>
+      </ul>
+    </section>
+
+    <section class="stack">
+      <h2>3. Deteksi Pembayaran</h2>
+      <p class="muted">
+        Deteksi pembayaran dilakukan dengan mencocokkan nominal, sumber pembayaran, dan rentang waktu
+        transaksi. Satu bukti pembayaran hanya dapat mengklaim satu order. <%= brand.name %> berupaya
+        menjaga ketepatan pencocokan, tetapi tidak menjamin proses berjalan tanpa henti karena
+        bergantung pada ketersediaan sesi dan endpoint masing-masing provider.
+      </p>
+    </section>
+
+    <section class="stack">
+      <h2>4. Risiko Provider</h2>
+      <div class="notice">
+        <div class="notice__head">
+          <%- include('../partials/icon', { name: 'alert' }) %>
+          <span>Penting untuk dipahami</span>
+        </div>
+        <p>
+          Pola transaksi yang berulang dengan tambahan fee atau kode unik pada hampir setiap
+          pembayaran dapat meningkatkan risiko akun merchant ditandai sebagai aktivitas tidak wajar
+          oleh sistem provider. Dampaknya bisa berupa pembatasan fitur, penangguhan, pemeriksaan
+          akun, hingga pemblokiran. <strong>Mode Hybrid</strong> membantu mengurangi pola tersebut,
+          tetapi bukan jaminan.
+        </p>
+        <p>
+          Penggunaan Fee dan Kode Unik sepenuhnya menjadi pilihan dan tanggung jawab merchant.
+        </p>
+      </div>
+    </section>
+
+    <section class="stack">
+      <h2>5. Data yang Kami Simpan</h2>
+      <ul class="stack-sm muted" style="padding-left:20px;list-style:disc">
+        <li>Data akun: email, nama tampilan, nama merchant, status verifikasi, dan tanggal bergabung.</li>
+        <li>Data order: nominal, status, waktu, project, serta ID transaksi provider untuk deduplikasi.</li>
+        <li>Kredensial koneksi provider disimpan dalam bentuk terenkripsi dan tidak ditampilkan kembali.</li>
+        <li>Log teknis: alamat IP, user agent, dan catatan aktivitas keamanan.</li>
+      </ul>
+    </section>
+
+    <section class="stack">
+      <h2>6. Penggunaan Data</h2>
+      <p class="muted">
+        Data dipakai untuk menjalankan layanan: menampilkan riwayat, mengenali pembayaran, mengirim
+        webhook, mengirim email penting (verifikasi akun dan pengingat masa aktif langganan), serta
+        menjaga keamanan akun. Kami tidak menjual data pelanggan kepada pihak ketiga.
+      </p>
+    </section>
+
+    <section class="stack">
+      <h2>7. Langganan &amp; Pembayaran</h2>
+      <p class="muted">
+        API key dan REST API memerlukan langganan aktif. Jika masa aktif berakhir, kredensial dan
+        pengaturan tetap tersimpan, namun akses REST API dikunci sementara. Pembelian langganan
+        bersifat satu kali bayar sesuai periode paket yang dipilih.
+      </p>
+    </section>
+
+    <section class="stack">
+      <h2>8. Batasan Tanggung Jawab</h2>
+      <p class="muted">
+        Layanan disediakan apa adanya. <%= brand.name %> tidak bertanggung jawab atas kerugian yang
+        timbul dari gangguan provider, kesalahan input nominal, kegagalan endpoint webhook Anda,
+        atau penggunaan layanan yang melanggar ketentuan platform pembayaran terkait.
+      </p>
+    </section>
+
+    <section class="stack">
+      <h2>9. Penangguhan Akun</h2>
+      <p class="muted">
+        Kami dapat menangguhkan akun yang terindikasi menyalahgunakan layanan, termasuk upaya
+        memalsukan bukti pembayaran atau memakai akun merchant milik pihak lain tanpa kewenangan.
+      </p>
+    </section>
+
+    <section class="stack">
+      <h2>10. Kontak</h2>
+      <p class="muted">
+        Pertanyaan mengenai ketentuan ini dapat disampaikan melalui kanal dukungan resmi kami.
+      </p>
+      <a class="support-link" href="<%= brand.supportUrl %>" target="_blank" rel="noopener">
+        <%- include('../partials/icon', { name: 'telegram' }) %>
+        <span><%= brand.supportLabel %> · <%= brand.supportPlatform %></span>
+        <%- include('../partials/icon', { name: 'arrowRight', className: 'arrow' }) %>
+      </a>
+    </section>
+  </div>
+</div>

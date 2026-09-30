@@ -1,0 +1,70 @@
+<div class="page-header">
+  <div>
+    <span class="page-header__eyebrow"><%= brand.shortName %> &middot; Pembayaran</span>
+    <h1>QRIS <%= brand.shortName %></h1>
+    <p class="page-header__sub">QRIS siap pakai untuk sistem yang tidak memiliki QRIS merchant sendiri.</p>
+  </div>
+</div>
+
+<% if (unlocked) { %>
+  <section class="card">
+    <div class="card__head">
+      <div class="card__head-title">
+        <span class="section-label">Aktif</span>
+        <h2>QRIS Siap Pakai</h2>
+        <p>Layanan QRIS dikelola <%= brand.name %>. Anda tidak perlu mengatur provider sendiri.</p>
+      </div>
+      <span class="badge badge--success badge--dot">Aktif</span>
+    </div>
+
+    <div class="card__body">
+      <div class="kv">
+        <div class="kv__row">
+          <span class="kv__key">Status layanan</span>
+          <span class="kv__val"><span class="status-line"><span class="status-dot status-dot--success"></span> Siap dipakai</span></span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Mode nominal</span>
+          <span class="kv__val">Hybrid</span>
+        </div>
+        <div class="kv__row">
+          <span class="kv__key">Fee</span>
+          <span class="kv__val">Nonaktif</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <a class="btn btn--primary" href="/qris">Buat Order</a>
+        <a class="btn btn--secondary" href="/documentation">Baca Dokumentasi</a>
+      </div>
+    </div>
+  </section>
+<% } else { %>
+  <section class="card">
+    <div class="card__body" style="justify-items:center;text-align:center;padding:var(--sp-8)">
+      <span class="empty-state__icon" style="width:56px;height:56px">
+        <%- include('../../partials/icon', { name: 'qrisWallet', strokeWidth: 1.5 }) %>
+      </span>
+
+      <span class="section-label">QRIS <%= brand.shortName %></span>
+      <h2 style="font-size:var(--fs-2xl)">Khusus Penyewa Bot DigiKita</h2>
+
+      <p class="muted" style="max-width:56ch">
+        Fitur QRIS <%= brand.shortName %> hanya tersedia untuk pengguna dengan status penyewa Bot
+        DigiKita yang aktif. Gunakan QRIS siap pakai tanpa perlu memiliki QRIS merchant sendiri
+        atau melakukan pengaturan pembayaran yang rumit.
+      </p>
+
+      <div class="row" style="justify-content:center">
+        <a class="btn btn--primary" href="/dashboard">
+          <%- include('../../partials/icon', { name: 'arrowLeft' }) %>
+          <span>Kembali ke Dashboard</span>
+        </a>
+        <a class="btn btn--secondary" href="<%= brand.supportUrl %>" target="_blank" rel="noopener">
+          <%- include('../../partials/icon', { name: 'telegram' }) %>
+          <span>Ajukan Akses</span>
+        </a>
+      </div>
+    </div>
+  </section>
+<% } %>

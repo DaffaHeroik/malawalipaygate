@@ -1,0 +1,5 @@
+<%
+  const iconData = (typeof icons !== 'undefined' && icons && icons[name]) ? icons[name] : null;
+  const extraClass = typeof className !== 'undefined' && className ? ` ${className}` : '';
+%>
+<% if (iconData) { %><svg<% if (extraClass) { %> class="<%= extraClass.trim() %>"<% } %> viewBox="<%= iconData.viewBox %>" fill="none" stroke="currentColor" stroke-width="<%= typeof strokeWidth !== 'undefined' ? strokeWidth : 1.7 %>" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><%- iconData.body %></svg><% } %>

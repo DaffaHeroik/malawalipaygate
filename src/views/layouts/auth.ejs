@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <%- include('../partials/head') %>
+</head>
+<body class="page-auth">
+  <%- include('../partials/flash') %>
+
+  <main class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <%- include('../partials/logo') %>
+        <p><%= brand.panelName %></p>
+      </div>
+      <%- body %>
+    </div>
+    <p class="auth-footer">
+      &copy; <%= brand.copyrightYear %> <%= brand.name %> <%= brand.footerNote %>. All rights reserved.
+    </p>
+  </main>
+
+  <%- include('../partials/theme-toggle', { className: 'auth-theme' }) %>
+  <div class="toast-stack" id="toast-stack" role="status" aria-live="polite"></div>
+  <%- include('../partials/scripts') %>
+</body>
+</html>
