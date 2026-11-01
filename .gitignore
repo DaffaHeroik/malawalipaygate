@@ -10,7 +10,6 @@ Thumbs.db
 uploads/
 public/uploads/
 tmp/
-data/
 .mongo-dev/
 
 # referensi recon (lokal saja; hanya RECON.md & html2txt.js yang ikut repo)

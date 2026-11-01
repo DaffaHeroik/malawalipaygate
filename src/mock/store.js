@@ -2,8 +2,8 @@
 
 const dataset = require('./dataset');
 const ids = require('../lib/ids');
-const { addDays, addMinutes } = require('../lib/datetime');
 const constants = require('../config/constants');
+const { addDays, addMinutes } = require('../lib/datetime');
 
 /**
  * Store in-memory untuk Fase UI (DATA_SOURCE=mock).
@@ -536,6 +536,118 @@ class MockStore {
   subscriptionEndLabel() {
     const sub = this.getSubscription();
     return sub.until ? addDays(sub.until, 0) : null;
+  }
+
+  /* ─────────── Kelengkapan kontrak multi-user ───────────
+     Mode mock adalah single-user: argumen userId selalu dianggap milik
+     user demo. Method berakhiran ForUser / admin hanyalah alias. */
+
+  getUserById() {
+    return this.getUser();
+  }
+
+  getUserByEmail() {
+    return this.getUser();
+  }
+
+  listUsers() {
+    return [this.getUser()];
+  }
+
+  /** REST API hanya hidup di mode db; mock menolak semua key. */
+  findUserByApiKey() {
+    return null;
+  }
+
+  markApiKeyUsed() {}
+
+  listAllOrders() {
+    return this.listOrders({ perPage: 1000 }).rows;
+  }
+
+  listAllSubscriptionPayments() {
+    return this.listSubscriptionPayments();
+  }
+
+  activateSubscription() {
+    const sub = this.getSubscription();
+    sub.active = true;
+    sub.until = addDays(new Date(), 30);
+    return sub;
+  }
+
+  getSettingsForUser() {
+    return this.getSettings();
+  }
+
+  updateSettingsForUser(userId, patch = {}) {
+    return this.updateSettings(patch);
+  }
+
+  getProjectForUser(userId, id) {
+    return this.getProject(id);
+  }
+
+  saveQrisForUser(userId, payload) {
+    return this.saveQris(payload);
+  }
+
+  getActiveQrisForUser(userId) {
+    return this.getActiveQris();
+  }
+
+  getDetectionForUser(userId) {
+    const detection = this.getDetection();
+    // Mock: REST API tidak hidup, jadi selalu "siap" agar UI tidak terblokir.
+    return { ...detection, ready: true };
+  }
+
+  getDashboardForUser(userId, params = {}) {
+    return this.getDashboard(params);
+  }
+
+  getSubscriptionForUser(userId) {
+    return this.getSubscription();
+  }
+
+  createOrderForUser({ userId, projectId = null, baseAmount, reference, ttlSeconds, provider } = {}) {
+    const order = this.createOrder({
+      projectId,
+      baseAmount,
+      reference,
+      ttlMinutes: Math.max(1, Math.round(ttlSeconds / 60)),
+    });
+    if (provider) order.provider = provider;
+    return order;
+  }
+
+  getOrderForUser(userId, id) {
+    return this.getOrder(id);
+  }
+
+  cancelOrderForUser(userId, id) {
+    return this.cancelOrder(id);
+  }
+
+  getAdminOverview() {
+    const settings = this.getSettings();
+    const paid = this.state.orders.filter((o) => o.status === 'paid');
+    return {
+      users: 1,
+      orders: this.state.orders.length,
+      paidCount: paid.length,
+      paidVolume: paid.reduce((sum, o) => sum + o.payAmount, 0),
+      pendingSubscriptions: this.state.subscriptionPayments.filter((p) => p.status === 'pending').length,
+      pricing: { ...constants.PLANS.reduce((acc, p) => ({ ...acc, [p.months]: p.price }), {}) },
+      disabledProviders: [],
+      announcement: '',
+      _unused: settings,
+    };
+  }
+
+  updateGlobalSetting() {
+    // Harga/announcement global hanya disimpan di DB (AppSetting).
+    return { ok: false, reason: 'mock_mode' };
   }
 }
 

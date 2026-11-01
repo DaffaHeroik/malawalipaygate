@@ -706,3 +706,4 @@ ORDER_EXPIRE_SWEEP_SECONDS=30
 | 2026-09-27 | Plan awal dibuat dari hasil recon (`_recon/RECON.md`) |
 | 2026-09-27 | Keputusan dikunci: brand **Malawali Payment**, target = rebuild PayKita, desain clean corporate, auth password+2FA, tanpa saldo, Mongo `mongodb-memory-server`, provider asli, kerja lanjut sampai Gate A |
 | 2026-09-27 | Fase 10–16 selesai: DB+auth, project/API key, QRIS/order, REST API+webhook, matching, admin/langganan. Ditambah: Listener API, enkripsi AES-256-GCM kredensial, Turnstile server-side, AuditLog, test integrasi |
+| 2026-11-01 | Facade `src/data` (mock/db/index) dibangun, 18 method MockStore multi-user dilengkapi, bug `findUserByApiKey` project non-utama diperbaiki. `npm test` 61/61 + smoke 14/14 + verifikasi UI db-mode (merchant & admin) semua 200. |
