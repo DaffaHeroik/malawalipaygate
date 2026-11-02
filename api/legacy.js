@@ -45,7 +45,7 @@ function parseAmount(v) {
 
 async function latestPending(apikey) {
   const now = Date.now() - 5 * 60000;
-  const all = await store.allPayments();
+  const all = await store.queryPaymentsByApikey(apikey);
   let latest = null;
   for (const p of Object.values(all)) {
     if (!p || p.apikey !== apikey || p.status !== 'pending') continue;
@@ -59,7 +59,7 @@ async function latestPending(apikey) {
 async function pendingCount(apikey) {
   const now = Date.now() - 5 * 60000;
   let c = 0;
-  for (const p of Object.values(await store.allPayments())) {
+  for (const p of Object.values(await store.queryPaymentsByApikey(apikey))) {
     if (!p || p.apikey !== apikey || p.status !== 'pending') continue;
     if (new Date(p.created_at || 0).getTime() >= now) c++;
   }
@@ -230,7 +230,7 @@ function buildRouter() {
     if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
     const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit || req.body?.limit || 50).replace(/[^0-9]/g, ''), 10) || 50));
     const statusFilter = String(req.query.status || req.body?.status || '').toLowerCase();
-    const all = await store.allPayments();
+    const all = await store.queryPaymentsByApikey(apikey);
     const tx = Object.values(all)
       .filter((p) => p && p.apikey === apikey && (!statusFilter || String(p.status || '').toLowerCase() === statusFilter))
       .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))

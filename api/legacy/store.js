@@ -5,19 +5,15 @@
  *
  * Backend:
  *  - `memory`  → in-memory (dev lokal / test, tanpa Firebase)
- *  - `firebase`→ Firebase RTDB via REST (FIREBASE_URL + opsional
- *               FIREBASE_SERVICE_ACCOUNT_JSON untuk access token admin).
+ *  - `firebase`→ Firebase RTDB via firebase-admin SDK (butuh
+ *               FIREBASE_SERVICE_ACCOUNT_JSON; admin SDK bypass security
+ *               rules — jalur REST publik `access_token` tetap kena rules 401).
  *
  * Skema path identik dengan backend lama (malawali-gw-server):
  *  apikeys/{key}=true, users/{apikey}, payments/{idtrx},
  *  payments/__amount_reservations__/{amount}, locks/{key},
  *  meta/payment_queue_cursor, logs/*.
  */
-
-const crypto = require('crypto');
-
-const FIREBASE_URL = String(process.env.FIREBASE_URL || 'https://heropayment-1328-default-rtdb.asia-southeast1.firebasedatabase.app').replace(/\/+$/, '');
-const MODE = process.env.LEGACY_STORE_MODE === 'memory' ? 'memory' : 'firebase';
 
 /* ─────────────────────────── memori ─────────────────────────── */
 const mem = {
@@ -43,23 +39,45 @@ function pathSet(root, p, value) {
   node[p[p.length - 1]] = value;
 }
 
+/* ─────────────────── firebase (admin SDK) ─────────────────── */
+const FIREBASE_URL = String(process.env.FIREBASE_URL || 'https://heropayment-1328-default-rtdb.asia-southeast1.firebasedatabase.app').replace(/\/+$/, '');
+const MODE = process.env.LEGACY_STORE_MODE === 'memory' ? 'memory' : 'firebase';
+
+let adminDb = null;
+function getAdminDb() {
+  if (adminDb) return adminDb;
+  const sa = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (!sa) {
+    throw new Error('FIREBASE_STORE: set FIREBASE_SERVICE_ACCOUNT_JSON (service account heropayment-1328)');
+  }
+  const admin = require('firebase-admin');
+  const { getDatabase } = require('firebase-admin/database');
+  const app = admin.initializeApp({
+    credential: admin.cert(JSON.parse(sa)),
+    databaseURL: FIREBASE_URL,
+  });
+  adminDb = getDatabase(app);
+  return adminDb;
+}
 const fire = {
   mode: MODE,
-  firebaseReady: MODE === 'firebase',
 
   /* GET path (dot-separated) → value|null (undefined = tidak ada) */
   async get(path) {
     if (MODE === 'memory') return pathGet(mem, path.split('/')) ?? null;
-    return firebaseRest('GET', path);
+    const snap = await getAdminDb().ref(String(path)).once('value');
+    return snap.val() ?? null;
   },
 
   /* SET path → value (null menghapus) */
   async set(path, value) {
+    const ref = getAdminDb().ref(String(path));
     if (MODE === 'memory') {
       pathSet(mem, path.split('/'), value === null ? undefined : value);
       return;
     }
-    await firebaseRest(value === null ? 'DELETE' : 'PUT', path, value === null ? undefined : JSON.stringify(value));
+    if (value === null || value === undefined) await ref.remove();
+    else await ref.set(value);
   },
 
   /* PATCH path → object partial */
@@ -69,7 +87,7 @@ const fire = {
       pathSet(mem, path.split('/'), { ...cur, ...partial });
       return;
     }
-    await firebaseRest('PATCH', path, JSON.stringify(partial));
+    await getAdminDb().ref(String(path)).update(partial);
   },
 
   /* Ambil koleksi penuh */
@@ -78,59 +96,6 @@ const fire = {
     return v && typeof v === 'object' ? v : {};
   },
 };
-
-/* ─────────────────── firebase REST (+ service account) ─────────────────── */
-let saToken = null;
-let saTokenExp = 0;
-
-async function getAccessToken() {
-  const sa = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (!sa) return null;
-  if (saToken && Date.now() < saTokenExp - 60000) return saToken;
-  const svc = JSON.parse(sa);
-  // JWT RS256 → exchange ke OAuth2 access token Firebase.
-  const b64url = (b) => Buffer.from(b).toString('base64url');
-  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const now = Math.floor(Date.now() / 1000);
-  const payload = b64url(JSON.stringify({
-    iss: svc.client_email, scope: 'https://www.googleapis.com/auth/firebase.database',
-    aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600,
-  }));
-  const sig = b64url(crypto.createSign('RSA-SHA256').update(`${header}.${payload}`).sign(svc.private_key));
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${header}.${payload}.${sig}`,
-  });
-  const data = await res.json();
-  if (!data.access_token) throw new Error('Gagal ambil access token Firebase: ' + data.error_description);
-  saToken = data.access_token;
-  saTokenExp = Date.now() + (data.expires_in - 60) * 1000;
-  return saToken;
-}
-
-async function firebaseRest(method, path, body) {
-  const encodedPath = String(path)
-    .split('/')
-    .map((seg) => encodeURIComponent(seg))
-    .join('/');
-  const url = `${FIREBASE_URL}/${encodedPath}.json`;
-  const token = await getAccessToken();
-  const res = await fetch(token ? `${url}?access_token=${token}` : url, {
-    method,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
-    body,
-    timeout: 8000,
-  });
-  if (!res.ok && res.status !== 204) {
-    const text = await res.text();
-    const e = new Error(`Firebase ${method} ${path} → ${res.status}: ${text.slice(0, 200)}`);
-    e.status = res.status;
-    throw e;
-  }
-  const ct = res.headers.get('content-type') || '';
-  return ct.includes('json') ? res.json() : (await res.text());
-}
 
 /* ─────────────────────────── API publik ─────────────────────────── */
 
@@ -179,6 +144,40 @@ module.exports = {
     const out = {};
     for (const [k, v] of Object.entries(c)) if (!k.startsWith('__')) out[k] = v;
     return out;
+  },
+
+  /* Query terfilter (hemat payload — full download 16k records ≈ 60s, ga kepake di hot path).
+   * Memory mode: filter di memori. */
+  async queryPaymentsByApikey(apikey) {
+    const key = String(apikey).trim();
+    if (MODE === 'memory') {
+      const out = {};
+      for (const [k, v] of Object.entries(mem.payments)) {
+        if (!k.startsWith('__') && v && v.apikey === key) out[k] = v;
+      }
+      return out;
+    }
+    const snap = await getAdminDb()
+      .ref('payments')
+      .orderByChild('apikey')
+      .equalTo(String(apikey).trim())
+      .once('value');
+    return snap.val() || {};
+  },
+  async pendingPayments() {
+    if (MODE === 'memory') {
+      const out = {};
+      for (const [k, v] of Object.entries(mem.payments)) {
+        if (!k.startsWith('__') && v && v.status === 'pending') out[k] = v;
+      }
+      return out;
+    }
+    const snap = await getAdminDb()
+      .ref('payments')
+      .orderByChild('status')
+      .equalTo('pending')
+      .once('value');
+    return snap.val() || {};
   },
 
   async getReservation(amount) { return fire.get(`payments/__amount_reservations__/${amount}`) || null; },

@@ -88,7 +88,7 @@ async function matchPayment({ provider, providerTransactionId, amount, occurredA
   if (claimed) return { matched: false, reason: 'already_claimed' };
   await store.setPath(`__claims__/${encodeURIComponent(claimKey)}`, { provider, providerTransactionId, at: occurredAt.toISOString() });
 
-  const all = await store.allPayments();
+  const all = await store.pendingPayments();
   const now = occurredAt.getTime();
   const candidates = Object.values(all).filter(
     (p) =>
@@ -252,7 +252,7 @@ function buildRouter() {
     }
     const now = new Date();
     let expired = 0;
-    const all = await store.allPayments();
+    const all = await store.pendingPayments();
     for (const p of Object.values(all)) {
       if (!p || p.status !== 'pending') continue;
       const exp = new Date(p.expires_at || p.created_at || 0).getTime();
