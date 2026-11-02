@@ -4,9 +4,6 @@
     { "src": "vercel/entry.js", "use": "@vercel/express" }
   ],
   "routes": [
-    { "src": "/(health|payment|auth|qris|user|withdraw|api|webhook|cron|admin)(/|$).*", "dest": "vercel/entry.js" },
-    { "src": "/assets/(.*)", "dest": "/public/spa/assets/$1" },
-    { "src": "/malawali-icon.svg", "dest": "/public/spa/malawali-icon.svg" },
-    { "src": "/(.*)", "dest": "public/spa/index.html" }
+    { "src": "/(.*)", "dest": "vercel/entry.js" }
   ]
 }
