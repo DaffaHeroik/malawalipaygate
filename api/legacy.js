@@ -77,16 +77,42 @@ async function generateIdtrx(prefix) {
 
 /* alokasi unique-fee sederhana: mulai dari cursor, putar 0..MAX */
 
-/* ── verify password format lama: "salt:hash" PBKDF2-SHA512, 120k iter, 64B (hex) ── */
+/* ── verify password format lama di RTDB: "saltHex:hashHex"
+   dua varian yang ketemu di data:
+   - PBKDF2-SHA512, 120k iter, 64B (lib/auth.js backend lama)
+   - scrypt N=16384 r=8 p=1, 64B, salt = bytes hex saltHex (verifikasi: matched) ── */
 function verifyLegacyHash(hashField, password) {
   const raw = String(hashField || '').trim();
   const idx = raw.indexOf(':');
   if (idx <= 0) return false;
-  const salt = raw.slice(0, idx);
+  const saltHex = raw.slice(0, idx);
   const expected = raw.slice(idx + 1);
-  if (!/^[0-9a-f]+$/i.test(salt) || !/^[0-9a-f]+$/i.test(expected) || expected.length < 32) return false;
-  const got = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
-  return got.length === expected.length && crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expected));
+  if (!/^[0-9a-f]+$/i.test(saltHex) || !/^[0-9a-f]+$/i.test(expected)) return false;
+  const expectBuf = Buffer.from(expected, 'hex');
+
+  // varian 1: PBKDF2 (salt hex sebagai string)
+  for (const [alg, iter, len] of [
+    ['sha512', 120000, 64],
+    ['sha512', 120000, 32],
+    ['sha256', 100000, 32],
+    ['sha256', 100000, 64],
+  ]) {
+    if (len * 2 !== expected.length) continue;
+    const got = crypto.pbkdf2Sync(password, saltHex, iter, len, alg);
+    if (got.length === expectBuf.length && crypto.timingSafeEqual(got, expectBuf)) return true;
+  }
+
+  // varian 2: scrypt N=16384 r=8 p=1, 64B, salt = bytes dari saltHex
+  for (const salt of [Buffer.from(saltHex, 'hex'), saltHex]) {
+    for (const keylen of [32, 64]) {
+      if (keylen * 2 !== expected.length) continue;
+      try {
+        const got = crypto.scryptSync(password, salt, keylen, { N: 16384, r: 8, p: 1 });
+        if (crypto.timingSafeEqual(got, expectBuf)) return true;
+      } catch (_) { /* param invalid — skip */ }
+    }
+  }
+  return false;
 }
 
 async function allocateUniqueFee(baseAmount) {
