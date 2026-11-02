@@ -76,6 +76,19 @@ async function generateIdtrx(prefix) {
 }
 
 /* alokasi unique-fee sederhana: mulai dari cursor, putar 0..MAX */
+
+/* ── verify password format lama: "salt:hash" PBKDF2-SHA512, 120k iter, 64B (hex) ── */
+function verifyLegacyHash(hashField, password) {
+  const raw = String(hashField || '').trim();
+  const idx = raw.indexOf(':');
+  if (idx <= 0) return false;
+  const salt = raw.slice(0, idx);
+  const expected = raw.slice(idx + 1);
+  if (!/^[0-9a-f]+$/i.test(salt) || !/^[0-9a-f]+$/i.test(expected) || expected.length < 32) return false;
+  const got = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
+  return got.length === expected.length && crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expected));
+}
+
 async function allocateUniqueFee(baseAmount) {
   let cursor = await store.getQueueCursor();
   if (!Number.isInteger(cursor) || cursor < MIN_UNIQUE_FEE || cursor > MAX_UNIQUE_FEE) cursor = MIN_UNIQUE_FEE;
@@ -288,8 +301,11 @@ function buildRouter() {
     if (!apikey || !password) return res.json(buildErrorResponse('apikey dan password wajib diisi', 'INVALID_REQUEST', { code: 'EMAIL_REQUIRED' }));
     if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
     const user = (await store.getUser(apikey)) || {};
-    // password lama: plaintext field di users/{apikey}
-    const ok = ['pw', 'password', 'pass'].some((f) => user[f] !== undefined && String(user[f]) === password);
+    // password lama: plaintext field (pw/password/pass) ATAU PBKDF2-SHA512
+    // 120k iter 64-byte hex `salt:hash` (format backend lama lib/auth.js)
+    const ok =
+      ['pw', 'password', 'pass'].some((f) => user[f] !== undefined && String(user[f]) === password) ||
+      verifyLegacyHash(user.password_hash, password);
     if (!ok) return res.json(buildErrorResponse('Password tidak valid', 'INVALID_PASSWORD'));
     res.json({
       status: true, creator: CREATOR, code: 'AUTH_OK', message: 'Login berhasil',
