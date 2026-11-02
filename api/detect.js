@@ -15,10 +15,66 @@
 
 const express = require('express');
 const crypto = require('crypto');
+const dns = require('dns');
 
 const store = require('./legacy/store');
 
 const WEBHOOK_SECRET = String(process.env.LEGACY_WEBHOOK_SECRET || '').trim();
+const ALLOWED_PROVIDERS = new Set(['saweria', 'gopay', 'dana']);
+
+/* ── util keamanan ── */
+const safeEqual = (a, b) => {
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+};
+
+const PRIVATE_CIDRS = [
+  { cidr: '0.0.0.0', mask: 8 }, { cidr: '10.0.0.0', mask: 8 },
+  { cidr: '100.64.0.0', mask: 10 }, { cidr: '127.0.0.0', mask: 8 },
+  { cidr: '169.254.0.0', mask: 16 }, { cidr: '172.16.0.0', mask: 12 },
+  { cidr: '192.168.0.0', mask: 16 },
+];
+
+function ip4ToNum(ip) {
+  return ip.split('.').reduce((n, o) => (n * 256n) + BigInt(o), 0n);
+}
+
+function isPrivateIp(ip) {
+  if (ip === '::1' || ip === '::') return true;
+  if (ip.toLowerCase().startsWith('fc') || ip.toLowerCase().startsWith('fd')) return true;
+  const parts = ip.split('.');
+  if (parts.length !== 4) return false;
+  const ipNum = ip4ToNum(ip);
+  for (const c of PRIVATE_CIDRS) {
+    const netNum = ip4ToNum(c.cidr) & ~(2n ** BigInt(32 - c.mask) - 1n);
+    if ((ipNum & netNum) === netNum) return true;
+  }
+  return false;
+}
+
+async function assertPublicHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return false;
+  const addrs = await dns.promises.lookup(host, { all: true });
+  return addrs.length > 0 && addrs.every((a) => !isPrivateIp(a.address));
+}
+
+/* fetch aman: wajib https, block target private/loopback/metadata (SSRF guard) */
+async function safeFetch(url, opts = {}) {
+  const u = new URL(url);
+  if (u.protocol !== 'https:' || !(await assertPublicHost(u.hostname))) {
+    throw new Error('blocked: hanya https ke host publik');
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /* ── matching: cari order pending yang nominalnya cocok & masih aktif ── */
 async function matchPayment({ provider, providerTransactionId, amount, occurredAt = new Date(), raw = {}, userId = null }) {
@@ -26,7 +82,7 @@ async function matchPayment({ provider, providerTransactionId, amount, occurredA
     return { matched: false, reason: 'invalid_payload' };
   }
 
-  // klaim trans (unique) — pakai logs/payments
+  // klaim trans (unique) — pakai __claims__
   const claimKey = `${provider}:${providerTransactionId}`;
   const claimed = await store.getPath(`__claims__/${encodeURIComponent(claimKey)}`);
   if (claimed) return { matched: false, reason: 'already_claimed' };
@@ -63,6 +119,8 @@ async function matchPayment({ provider, providerTransactionId, amount, occurredA
     return { matched: true, orderId: p.idtrx, providerTransactionId };
   }
 
+  // ga ada order cocok → bebasin klaim supaya redelivery provider bisa nyoba lagi
+  await store.setPath(`__claims__/${encodeURIComponent(claimKey)}`, null);
   return { matched: false, reason: 'no_matching_order' };
 }
 
@@ -71,17 +129,19 @@ async function notifyMerchant(payment, provider, providerTransactionId) {
   try {
     const hooks = await store.getWebhooks(payment.apikey);
     for (const url of hooks) {
-      if (!url || !/^https?:\/\//.test(url)) continue;
-      await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'payment.paid',
-          provider, provider_transaction_id: providerTransactionId,
-          idtrx: payment.idtrx, amount: payment.amount,
-          base_amount: payment.base_amount, paid_at: payment.paid_at,
-        }),
-      }).catch(() => {});
+      if (!url || !/^https:\/\//.test(String(url).trim())) continue;
+      try {
+        await safeFetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'payment.paid',
+            provider, provider_transaction_id: providerTransactionId,
+            idtrx: payment.idtrx, amount: payment.amount,
+            base_amount: payment.base_amount, paid_at: payment.paid_at,
+          }),
+        }).catch(() => {});
+      } catch (_) { /* URL dip-block guard → skip */ }
     }
   } catch (_) { /* non-critical */ }
 }
@@ -115,12 +175,13 @@ function buildRouter() {
     if (!['saweria', 'gopay', 'dana'].includes(provider)) {
       return res.status(400).json({ ok: false, error: { code: 'unknown_provider', message: 'Provider tidak dikenal.' } });
     }
-    // signature check (best effort, tergantung provider)
     const sig = String(req.get('x-signature') || req.get('x-webhook-signature') || '');
-    if (WEBHOOK_SECRET && sig) {
-      const hash = crypto.createHmac('sha256', WEBHOOK_SECRET).update(JSON.stringify(req.body || {})).digest('hex');
-      if (hash !== sig.toLowerCase()) {
-        return res.status(401).json({ ok: false, error: { code: 'invalid_signature', message: 'Signature tidak cocok.' } });
+    if (WEBHOOK_SECRET) {
+      // fail-closed: secret terpasang → signature WAJIB ada & valid
+      // (HMAC-SHA256 LEGACY_WEBHOOK_SECRET atas JSON body, hex lowercase)
+      if (!sig || !safeEqual(sig.toLowerCase(),
+        crypto.createHmac('sha256', WEBHOOK_SECRET).update(JSON.stringify(req.body || {})).digest('hex'))) {
+        return res.status(401).json({ ok: false, error: { code: 'invalid_signature', message: 'Signature tidak valid.' } });
       }
     }
 
@@ -145,13 +206,31 @@ function buildRouter() {
 
   /* ── /api/listener/push — pembayaran dari APK Malawali Listener ── */
   r.post('/api/listener/push', async (req, res) => {
+    // Auth: APK wajib bawa LEGACY_LISTENER_TOKEN (header x-listener-token).
+    // Kalau token belum dikonfigurasi, fallback ke require userId/apikey valid
+    // di store (prevent credit injection anonim).
+    const listenerToken = String(process.env.LEGACY_LISTENER_TOKEN || '').trim();
+    const provided = String(req.get('x-listener-token') || req.get('x-api-key') || '').trim();
+    if (listenerToken) {
+      if (!safeEqual(provided, listenerToken)) {
+        return res.status(401).json({ ok: false, error: { code: 'unauthorized', message: 'Listener token tidak valid.' } });
+      }
+    }
+
     const raw = req.body || {};
     const provider = String(raw.provider || raw.providerTransactionId || '').toLowerCase();
+    if (!ALLOWED_PROVIDERS.has(provider)) {
+      return res.status(400).json({ ok: false, error: { code: 'unknown_provider', message: 'Provider tidak dikenal.' } });
+    }
     const providerTransactionId = String(raw.providerTransactionId || raw.provider_transaction_id || '').trim();
     const amount = Number(raw.amount);
     const userId = String(raw.apikey || raw.userId || raw.user_id || '').trim() || null;
     if (!provider || !providerTransactionId || !Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ ok: false, error: { code: 'invalid_payload', message: 'provider, providerTransactionId, amount wajib.' } });
+    }
+    // require apikey valid (jaga-jaga: ga boleh credit user yang ga ada)
+    if (userId && !(await store.apikeyIsValid(userId))) {
+      return res.status(404).json({ ok: false, error: { code: 'unknown_apikey', message: 'APIKEY tidak ditemukan.' } });
     }
     const result = await matchPayment({
       provider, providerTransactionId, amount,
@@ -163,8 +242,12 @@ function buildRouter() {
 
   /* ── /cron/detect — sweeper order pending yang sudah lewat TTL ── */
   r.get('/cron/detect', async (req, res) => {
-    const secret = String(req.query.secret || '');
-    if (WEBHOOK_SECRET && secret !== WEBHOOK_SECRET) {
+    // fail-closed: secret WAJIB cocok (jika WEBHOOK_SECRET terpasang).
+    const secret = String(req.query.secret || req.get('x-cron-secret') || '');
+    if (!WEBHOOK_SECRET) {
+      return res.status(503).json({ ok: false, error: { code: 'not_configured', message: 'Cron sweeper belum dikonfigurasi (set LEGACY_WEBHOOK_SECRET).' } });
+    }
+    if (!safeEqual(secret, WEBHOOK_SECRET)) {
       return res.status(401).json({ ok: false, error: { code: 'unauthorized', message: 'Secret salah.' } });
     }
     const now = new Date();
