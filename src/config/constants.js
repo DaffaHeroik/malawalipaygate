@@ -255,8 +255,8 @@ const PROVIDERS = [
   { key: 'auto', label: 'Otomatis dari QRIS (disarankan)', group: 'auto' },
   { key: 'shopee', label: 'Shopee Partner', group: 'api' },
   { key: 'gopay', label: 'GoPay Merchant', group: 'api' },
+  { key: 'saweria', label: 'Saweria', group: 'api' },
   { key: 'dana', label: 'DANA Bisnis', group: 'listener' },
-  { key: 'orderkuota', label: 'Order Kuota', group: 'listener' },
   { key: 'bca', label: 'BCA Merchant', group: 'listener' },
   { key: 'livin', label: 'Livin Merchant by Mandiri', group: 'listener' },
   { key: 'bri', label: 'BRI Merchant', group: 'listener' },
@@ -271,7 +271,7 @@ const PROVIDER_LABEL = Object.fromEntries(PROVIDERS.map((p) => [p.key, p.label])
 
 /** Provider yang didukung adapter API (koneksi akun), sisanya lewat Listener. */
 const PROVIDER_GROUPS = {
-  api: ['shopee', 'gopay'],
+  api: ['shopee', 'gopay', 'saweria'],
   listener: PROVIDERS.filter((p) => p.group === 'listener').map((p) => p.key),
 };
 

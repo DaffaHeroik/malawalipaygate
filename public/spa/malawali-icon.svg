@@ -1,0 +1,7 @@
+<svg id="main-icon-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <circle cx="250" cy="250" r="240" fill="#0d1117"/>
+  <g stroke="#ffffff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M 155 330 L 155 170 L 225 255 L 295 170 L 295 330"/>
+    <path d="M 295 170 C 410 170, 410 265, 295 265"/>
+  </g>
+</svg>

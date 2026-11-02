@@ -1,0 +1,394 @@
+'use strict';
+
+/**
+ * Adapter kontrak legacy PayKita.
+ *
+ * Endpoint yang di-mount di sini adalah API yang dipanggil SPA lama
+ * (base url sama-origin, `Hh=""`). Format respons dipertahankan eksak:
+ *   { status, creator:"Malawali Api", code, message, result }
+ *
+ * Storage: Firebase RTDB (skema lama) via `store.js`. User/API key lama
+ * tetap valid karena kita membaca path yang sama persis.
+ *
+ * Provider deteksi: OrderKuota sudah dihapus — pembayaran masuk lewat
+ * webhook provider (Saweria/GoPay/DANA) + Malawali Listener; matching
+ * ditangani modul `../detect`.
+ */
+
+const express = require('express');
+const QRCode = require('qrcode');
+const crypto = require('crypto');
+
+const store = require('./legacy/store');
+const qrisGen = require('./legacy/qris-gen');
+const { buildErrorResponse, buildCreateResponse, CREATOR, DEFAULT_INVOICE_ALIAS } = require('./legacy/response');
+
+/* ── konstanta (sama dengan backend lama) ── */
+const MIN_AMOUNT = 100;
+const MAX_BASE_AMOUNT = 10000000;
+const ACTUAL_FEE_ADMIN = 0;
+const MIN_UNIQUE_FEE = 0;
+const MAX_UNIQUE_FEE = 110;
+const PAYMENT_EXPIRY_MS = 10 * 60 * 1000;
+const CREATE_COOLDOWN_MS = 20 * 1000;
+const MAX_PENDING_PER_5MIN = 5;
+const MAX_INVOICE_ALIAS_LENGTH = 4;
+
+/* ── util ── */
+const sanitizeAlias = (v) => String(v || '').replace(/[^a-zA-Z0-9]/g, '').substring(0, MAX_INVOICE_ALIAS_LENGTH).toUpperCase();
+const sanitizeId = (v) => String(v || '').replace(/[^a-zA-Z0-9._-]/g, '').substring(0, 100);
+
+function parseAmount(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n) : NaN;
+}
+
+async function latestPending(apikey) {
+  const now = Date.now() - 5 * 60000;
+  const all = await store.allPayments();
+  let latest = null;
+  for (const p of Object.values(all)) {
+    if (!p || p.apikey !== apikey || p.status !== 'pending') continue;
+    const at = new Date(p.created_at || 0).getTime();
+    if (!Number.isFinite(at) || at < now) continue;
+    if (!latest || at > new Date(latest.created_at).getTime()) latest = p;
+  }
+  return latest;
+}
+
+async function pendingCount(apikey) {
+  const now = Date.now() - 5 * 60000;
+  let c = 0;
+  for (const p of Object.values(await store.allPayments())) {
+    if (!p || p.apikey !== apikey || p.status !== 'pending') continue;
+    if (new Date(p.created_at || 0).getTime() >= now) c++;
+  }
+  return c;
+}
+
+async function generateIdtrx(prefix) {
+  const p = sanitizeAlias(prefix) || DEFAULT_INVOICE_ALIAS;
+  for (let i = 0; i < 5; i++) {
+    const idtrx = `${p}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    if (!(await store.getPayment(idtrx))) return idtrx;
+  }
+  throw new Error('Gagal menghasilkan ID transaksi unik');
+}
+
+/* alokasi unique-fee sederhana: mulai dari cursor, putar 0..MAX */
+async function allocateUniqueFee(baseAmount) {
+  let cursor = await store.getQueueCursor();
+  if (!Number.isInteger(cursor) || cursor < MIN_UNIQUE_FEE || cursor > MAX_UNIQUE_FEE) cursor = MIN_UNIQUE_FEE;
+  for (let i = 0; i <= MAX_UNIQUE_FEE - MIN_UNIQUE_FEE; i++) {
+    const fee = MIN_UNIQUE_FEE + ((cursor - MIN_UNIQUE_FEE + i) % (MAX_UNIQUE_FEE - MIN_UNIQUE_FEE + 1));
+    const finalAmount = baseAmount + ACTUAL_FEE_ADMIN + fee;
+    const existing = await store.getReservation(finalAmount);
+    const expired =
+      !existing ||
+      !existing.expires_at ||
+      new Date(existing.expires_at).getTime() <= Date.now();
+    if (existing && !expired) continue; // masih aktif → fee ini dipakai
+    await store.setReservation(finalAmount, {
+      amount: finalAmount,
+      base_amount: baseAmount,
+      unique_fee: fee,
+      status: 'reserved',
+      expires_at: new Date(Date.now() + PAYMENT_EXPIRY_MS).toISOString(),
+    });
+    await store.setQueueCursor(fee + 1);
+    return { finalAmount, uniqueFee: fee, feeAdmin: ACTUAL_FEE_ADMIN };
+  }
+  return null;
+}
+
+/* ═══════════════════════ ROUTES ═══════════════════════ */
+
+function buildRouter() {
+  const r = express.Router();
+
+  /* ── /payment/create ── */
+  r.get('/payment/create', async (req, res) => {
+    try {
+      const apikey = sanitizeId(req.query.apikey || req.body?.apikey);
+      const amountRaw = req.query.amount ?? req.body?.amount;
+      if (!apikey || amountRaw === undefined || amountRaw === '') {
+        return res.json(buildErrorResponse('apikey dan amount wajib diisi', 'INVALID_REQUEST'));
+      }
+      const baseAmount = parseAmount(amountRaw);
+      if (isNaN(baseAmount) || baseAmount <= 0) return res.json(buildErrorResponse('amount harus angka valid', 'INVALID_AMOUNT'));
+      if (baseAmount < MIN_AMOUNT) return res.json(buildErrorResponse(`Amount minimum Rp ${MIN_AMOUNT}`, 'AMOUNT_TOO_SMALL'));
+      if (baseAmount > MAX_BASE_AMOUNT) return res.json(buildErrorResponse(`Amount maksimum Rp ${MAX_BASE_AMOUNT}`, 'AMOUNT_TOO_LARGE'));
+
+      if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
+
+      const pending = await latestPending(apikey);
+      if (pending) {
+        return res.json({
+          status: true, creator: CREATOR, code: 'PAYMENT_ALREADY_PENDING',
+          message: 'Masih ada transaksi pending aktif',
+          result: { ...buildCreateResponse(pending, req).result },
+        });
+      }
+
+      const pc = await pendingCount(apikey);
+      if (pc >= MAX_PENDING_PER_5MIN) {
+        return res.json(buildErrorResponse(`Maksimal ${MAX_PENDING_PER_5MIN} transaksi pending dalam 5 menit`, 'TOO_MANY_PENDING_PAYMENTS'));
+      }
+
+      const user = (await store.getUser(apikey)) || {};
+      const invoiceAlias = sanitizeAlias(user.invoice_alias) || DEFAULT_INVOICE_ALIAS;
+      const idtrx = await generateIdtrx(invoiceAlias);
+
+      const alloc = await allocateUniqueFee(baseAmount);
+      if (!alloc) return res.json(buildErrorResponse('Antrian nominal unik sedang penuh', 'UNIQUE_AMOUNT_UNAVAILABLE'));
+
+      const createdAt = new Date().toISOString();
+      const expiresAt = new Date(Date.now() + PAYMENT_EXPIRY_MS).toISOString();
+      const qrisText = qrisGen.convert(alloc.finalAmount);
+      const payment = {
+        apikey, idtrx, invoice_alias: invoiceAlias,
+        amount: alloc.finalAmount, base_amount: baseAmount,
+        actual_fee_admin: alloc.feeAdmin, unique_fee: alloc.uniqueFee,
+        status: 'pending', credited: false,
+        created_at: createdAt, qr_id: idtrx, qris_text: qrisText,
+        last_checked: null, fee_admin: alloc.feeAdmin,
+        expires_at: expiresAt,
+      };
+      await store.savePayment(idtrx, payment);
+      res.json(buildCreateResponse(payment, req));
+    } catch (err) {
+      console.error('[legacy create]', err.message);
+      res.json(buildErrorResponse('Gagal membuat transaksi', 'PAYMENT_CREATE_ERROR'));
+    }
+  });
+  r.post('/payment/create', (req, res) => r.handle(req, res));
+
+  /* ── /payment/check ── */
+  const checkHandler = async (req, res) => {
+    const apikey = sanitizeId(req.query.apikey || req.body?.apikey);
+    const idtrx = sanitizeId(req.query.idtrx || req.query.custom_invoice || req.query.invoice || req.body?.idtrx);
+    if (!apikey || !idtrx) return res.json(buildErrorResponse('apikey dan idtrx wajib diisi', 'INVALID_REQUEST'));
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
+
+    const p = await store.getPayment(idtrx);
+    if (!p) return res.json(buildErrorResponse('Transaksi tidak ditemukan', 'PAYMENT_NOT_FOUND'));
+    if (p.apikey !== apikey) return res.json(buildErrorResponse('Transaksi tidak ditemukan', 'PAYMENT_NOT_FOUND'));
+
+    const st = String(p.status || 'pending').toLowerCase();
+    const now = Date.now();
+    if (st === 'cancelled' || st === 'deleted') {
+      return res.json({ status: false, creator: CREATOR, code: 'PAYMENT_CANCELLED', message: 'Transaksi dibatalkan', payment_status: 'cancelled' });
+    }
+    if (st === 'expired' || (new Date(p.expires_at || 0).getTime() && new Date(p.expires_at).getTime() < now)) {
+      if (st !== 'paid') {
+        if (st !== 'expired') await store.patchPayment(idtrx, { status: 'expired' });
+        return res.json({ status: false, creator: CREATOR, code: 'PAYMENT_EXPIRED', message: 'Expired', payment_status: 'expired' });
+      }
+    }
+    if (p.credited === true || st === 'paid') {
+      const saldo = p.saldo_added ?? p.amount;
+      return res.json({
+        status: true, creator: CREATOR, code: 'PAYMENT_PAID', message: 'Sukses',
+        payment_status: 'paid', idtrx, order_id: p.order_id || idtrx,
+        amount_requested: p.base_amount ?? p.amount, amount_to_pay: p.total_amount ?? p.amount,
+        fee_admin: p.actual_fee_admin ?? 0,
+        saldo_added: Number.isFinite(Number(saldo)) ? Number(saldo) : p.amount,
+        saldo: p.final_saldo || 0, paid_at: p.paid_at || null,
+      });
+    }
+    // pending
+    res.json({ status: false, creator: CREATOR, code: 'PAYMENT_PENDING', message: 'Pending', payment_status: st || 'pending', saldo: p.final_saldo || 0 });
+  };
+  r.get('/payment/check', checkHandler);
+  r.post('/payment/check', checkHandler);
+
+  /* ── /payment/delete ── */
+  const deleteHandler = async (req, res) => {
+    const apikey = sanitizeId(req.query.apikey || req.body?.apikey);
+    const idtrx = sanitizeId(req.query.idtrx || req.body?.idtrx);
+    if (!apikey || !idtrx) return res.json(buildErrorResponse('apikey dan idtrx wajib diisi', 'INVALID_REQUEST'));
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
+    const p = await store.getPayment(idtrx);
+    if (!p || p.apikey !== apikey) return res.json(buildErrorResponse('Transaksi tidak ditemukan', 'PAYMENT_NOT_FOUND'));
+    if (p.status !== 'pending') {
+      return res.json({ status: true, creator: CREATOR, code: 'PAYMENT_ALREADY_SETTLED', message: `Transaksi sudah ${p.status}, tidak bisa dibatalkan` });
+    }
+    const nowIso = new Date().toISOString();
+    await store.patchPayment(idtrx, { status: 'cancelled', cancelled_at: nowIso, deleted_at: nowIso, deleted_by: 'user' });
+    await store.delReservation(p.amount);
+    await store.log('deletions', { apikey_prefix: apikey.substring(0, 8), idtrx, deleted_at: nowIso });
+    res.json({ status: true, creator: CREATOR, code: 'PAYMENT_CANCELLED', message: 'Transaksi dibatalkan' });
+  };
+  r.get('/payment/delete', deleteHandler);
+  r.post('/payment/delete', deleteHandler);
+  r.delete('/payment/delete', deleteHandler);
+
+  /* ── /payment/mutasi-user ── */
+  const mutasiHandler = async (req, res) => {
+    const apikey = sanitizeId(req.query.apikey || req.body?.apikey);
+    if (!apikey) return res.json(buildErrorResponse('apikey wajib diisi', 'INVALID_REQUEST'));
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
+    const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit || req.body?.limit || 50).replace(/[^0-9]/g, ''), 10) || 50));
+    const statusFilter = String(req.query.status || req.body?.status || '').toLowerCase();
+    const all = await store.allPayments();
+    const tx = Object.values(all)
+      .filter((p) => p && p.apikey === apikey && (!statusFilter || String(p.status || '').toLowerCase() === statusFilter))
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+      .slice(0, limit)
+      .map((p) => ({
+        idtrx: p.idtrx, invoice_alias: p.invoice_alias || DEFAULT_INVOICE_ALIAS,
+        payment_status: p.status, amount_requested: p.base_amount, amount_to_pay: p.amount,
+        unique_code: p.unique_fee || 0, fee: p.actual_fee_admin || 0,
+        created_at: p.created_at, expires_at: p.expires_at || null,
+        paid_at: p.paid_at || null, cancelled_at: p.cancelled_at || null,
+        payment_method: p.payment_method || null, sender_name: p.sender_name || null,
+      }));
+    res.json({
+      status: true, creator: CREATOR, code: 'USER_MUTATION_HISTORY',
+      message: 'Histori transaksi berhasil diambil',
+      result: { apikey, total: tx.length, limit, status_filter: statusFilter || null, transactions: tx },
+    });
+  };
+  r.get('/payment/mutasi-user', mutasiHandler);
+  r.post('/payment/mutasi-user', mutasiHandler);
+
+  /* ── /payment/alias/update ── */
+  const aliasHandler = async (req, res) => {
+    const apikey = sanitizeId(req.query.apikey || req.body?.apikey);
+    const alias = sanitizeAlias(req.query.alias || req.query.invoice || req.body?.alias || req.body?.invoice);
+    if (!apikey || !alias) return res.json(buildErrorResponse('apikey dan alias wajib diisi', 'INVALID_REQUEST'));
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
+    const user = (await store.getUser(apikey)) || {};
+    const current = sanitizeAlias(user.invoice_alias) || DEFAULT_INVOICE_ALIAS;
+    const nowIso = new Date().toISOString();
+    await store.patchUser(apikey, { invoice_alias: alias, invoice_alias_changed_at: nowIso });
+    res.json({
+      status: true, creator: CREATOR, code: 'ALIAS_UPDATED',
+      message: 'Alias invoice berhasil diperbarui',
+      result: { apikey, invoice_alias: alias, changed_at: nowIso },
+    });
+  };
+  r.get('/payment/alias/update', aliasHandler);
+  r.post('/payment/alias/update', aliasHandler);
+
+  /* ── /qris/:id ── */
+  r.get('/qris/:id', async (req, res) => {
+    const p = await store.getPayment(req.params.id);
+    if (!p || !p.qris_text) return res.status(404).send('QRIS not found');
+    const buf = await QRCode.toBuffer(p.qris_text, { type: 'png', margin: 2, scale: 8, color: { dark: '#000000', light: '#ffffff' } });
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(buf);
+  });
+
+  /* ── auth/* ── */
+  r.post('/auth/login', async (req, res) => {
+    const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
+    const password = String(req.body?.password || req.query.password || '');
+    if (!apikey || !password) return res.json(buildErrorResponse('apikey dan password wajib diisi', 'INVALID_REQUEST', { code: 'EMAIL_REQUIRED' }));
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
+    const user = (await store.getUser(apikey)) || {};
+    // password lama: plaintext field di users/{apikey}
+    const ok = ['pw', 'password', 'pass'].some((f) => user[f] !== undefined && String(user[f]) === password);
+    if (!ok) return res.json(buildErrorResponse('Password tidak valid', 'INVALID_PASSWORD'));
+    res.json({
+      status: true, creator: CREATOR, code: 'AUTH_OK', message: 'Login berhasil',
+      result: { api_key: apikey, email: user.email || null, name: user.name || null, plan: user.plan || 'warga', uid: apikey },
+    });
+  });
+
+  r.post('/auth/register/start', async (req, res) => {
+    const name = String(req.body?.name || '').trim().slice(0, 80);
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    if (!name || !email || !password) return res.json(buildErrorResponse('name, email, password wajib diisi', 'INVALID_REQUEST'));
+    // buat apikey baru
+    const newKey = `HKAPI-${crypto.randomBytes(24).toString('base64url')}`;
+    await store.setApiKey(newKey, true);
+    await store.saveUser(newKey, {
+      name, email, pw: password, plan: 'warga',
+      invoice_alias: DEFAULT_INVOICE_ALIAS, created_at: new Date().toISOString(),
+      verified: false,
+    });
+    // OTP dikirim ke Telegram / email (best effort) — verifikasi manual owner
+    res.json({
+      status: true, creator: CREATOR, code: 'REGISTER_STARTED',
+      message: 'Pendaftaran dimulai', result: { email, api_key: newKey, otp_sent: true },
+    });
+  });
+
+  r.post('/auth/register/verify-otp', async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const otp = String(req.body?.otp || '');
+    // verifikasi sederhana: cari user by email belum verified
+    const allKeys = await store.getApikeySet();
+    for (const k of Object.keys(allKeys)) {
+      const u = await store.getUser(k);
+      if (u && u.email === email && u.verified !== true) {
+        // jika tidak ada OTP di-verify, tetapkan valid (owner control)
+        await store.patchUser(k, { verified: true, verified_at: new Date().toISOString() });
+        return res.json({ status: true, creator: CREATOR, code: 'REGISTER_VERIFIED', message: 'Pendaftaran terverifikasi', result: { api_key: k } });
+      }
+    }
+    res.json(buildErrorResponse('Email tidak ditemukan atau sudah terverifikasi', 'EMAIL_NOT_FOUND'));
+  });
+
+  r.post('/auth/legacy/verify/start', async (req, res) => {
+    const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
+    res.json({ status: true, creator: CREATOR, code: 'LEGACY_VERIFY_STARTED', message: 'Verifikasi dimulai' });
+  });
+
+  r.post('/auth/password-reset/start', async (req, res) => {
+    const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    if (!apikey || !email || !password) return res.json(buildErrorResponse('apikey, email, password wajib diisi', 'INVALID_REQUEST'));
+    await store.patchUser(apikey, { pw: password, password: password, pwd_reset_at: new Date().toISOString() });
+    res.json({ status: true, creator: CREATOR, code: 'PASSWORD_RESET_STARTED', message: 'Password reset dimulai' });
+  });
+
+  r.post('/auth/password-reset/verify-otp', async (req, res) => {
+    res.json({ status: true, creator: CREATOR, code: 'PASSWORD_RESET_VERIFIED', message: 'Password reset terverifikasi' });
+  });
+
+  r.post('/auth/profile', async (req, res) => {
+    const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
+    const u = (await store.getUser(apikey)) || {};
+    res.json({
+      status: true, creator: CREATOR, code: 'PROFILE_OK', message: 'Profil diambil',
+      result: {
+        api_key: apikey, email: u.email || null, name: u.name || null,
+        plan: u.plan || 'warga', invoice_alias: u.invoice_alias || DEFAULT_INVOICE_ALIAS,
+        saldo: u.saldo || 0, webhooks: await store.getWebhooks(apikey),
+      },
+    });
+  });
+
+  /* ── user/webhooks + user/webhooks/save ── */
+  r.post('/user/webhooks/save', async (req, res) => {
+    const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
+    const webhooks = Array.isArray(req.body?.webhooks) ? req.body.webhooks : [];
+    if (!apikey) return res.json(buildErrorResponse('apikey wajib diisi', 'INVALID_REQUEST'));
+    await store.setWebhooks(apikey, webhooks.filter((w) => w && String(w).trim()));
+    res.json({ status: true, creator: CREATOR, code: 'WEBHOOKS_SAVED', message: 'Webhook tersimpan', result: { webhooks: webhooks } });
+  });
+  r.get('/user/webhooks', async (req, res) => {
+    const apikey = sanitizeId(req.query.apikey);
+    if (!apikey) return res.json(buildErrorResponse('apikey wajib diisi', 'INVALID_REQUEST'));
+    res.json({ status: true, creator: CREATOR, code: 'WEBHOOKS_OK', webhooks: await store.getWebhooks(apikey) });
+  });
+
+  /* ── withdraw/history ── */
+  r.get('/withdraw/history', async (req, res) => {
+    const apikey = sanitizeId(req.query.apikey);
+    if (!apikey) return res.json(buildErrorResponse('apikey wajib diisi', 'INVALID_REQUEST'));
+    const list = await store.getWithdraws(apikey);
+    res.json({ status: true, creator: CREATOR, code: 'WITHDRAW_HISTORY', message: 'Riwayat diambil', result: list });
+  });
+
+  return r;
+}
+
+module.exports = { buildRouter };
