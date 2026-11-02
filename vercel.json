@@ -5,8 +5,5 @@
   ],
   "routes": [
     { "src": "/(.*)", "dest": "vercel/entry.js" }
-  ],
-  "crons": [
-    { "path": "/cron/detect", "schedule": "*/10 * * * *" }
   ]
 }
