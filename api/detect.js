@@ -115,6 +115,13 @@ async function matchPayment({ provider, providerTransactionId, amount, occurredA
     };
     await store.patchPayment(p.idtrx, patch);
     await store.delReservation(p.amount);
+    // buang dari index pending per-apikey (kalau APIKEY-nya dikenal)
+    if (p.apikey) {
+      try {
+        const ids = (await store.getPendingByApikey(p.apikey)).filter((x) => x !== p.idtrx);
+        await store.setPendingByApikey(p.apikey, ids);
+      } catch (_) { /* index best-effort */ }
+    }
 
     await notifyMerchant(p, provider, providerTransactionId);
     await notifyTelegram(p, provider, providerTransactionId);
@@ -262,6 +269,12 @@ function buildRouter() {
       if (exp && exp < now.getTime()) {
         await store.patchPayment(p.idtrx, { status: 'expired', expired_at: now.toISOString() });
         await store.delReservation(p.amount);
+        if (p.apikey) {
+          try {
+            const ids = (await store.getPendingByApikey(p.apikey)).filter((x) => x !== p.idtrx);
+            await store.setPendingByApikey(p.apikey, ids);
+          } catch (_) { /* index best-effort */ }
+        }
         expired++;
       }
     }

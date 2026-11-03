@@ -44,9 +44,7 @@ function parseAmount(v) {
   return Number.isFinite(n) ? Math.round(n) : NaN;
 }
 
-/* Satu query RTDB per request (full-scan /payments = bottleneck;
-   jangan dobelin 2x fetch). Return { latest, count } dari pending
-   5 menit terakhir. */
+/* Filter pending ≤5 menit terakhir dari daftar record payment. */
 const recentPendingInfo = (list, apikey) => {
   const now = Date.now() - 5 * 60000;
   let latest = null, c = 0;
@@ -60,12 +58,33 @@ const recentPendingInfo = (list, apikey) => {
   return { latest, count: c };
 };
 
+/* Index pending per-apikey (lightweight, pengganti full-scan /payments yang
+   3-10 detik untuk 17rb record). Index = daftar idtrx pending (20 terakhir).
+   Kalau index kosong (migrasi / pending lama) → full-scan sekali, build index. */
+async function apikeyPendingList(apikey) {
+  let ids = await store.getPendingByApikey(apikey);
+  if (!ids.length) {
+    const all = await store.queryPaymentsByApikey(apikey);
+    ids = Object.entries(all)
+      .filter(([, v]) => v && v.apikey === apikey && v.status === 'pending')
+      .map(([k]) => k);
+    if (ids.length) await store.setPendingByApikey(apikey, ids);
+  }
+  return ids;
+}
+
+async function recentPendingFor(apikey) {
+  const ids = await apikeyPendingList(apikey);
+  const items = await Promise.all(ids.map((id) => store.getPayment(id)));
+  return recentPendingInfo(items.filter(Boolean), apikey);
+}
+
 async function latestPending(apikey) {
-  return recentPendingInfo(await store.queryPaymentsByApikey(apikey), apikey).latest;
+  return (await recentPendingFor(apikey)).latest;
 }
 
 async function pendingCount(apikey) {
-  return recentPendingInfo(await store.queryPaymentsByApikey(apikey), apikey).count;
+  return (await recentPendingFor(apikey)).count;
 }
 
 async function generateIdtrx(prefix) {
@@ -165,17 +184,16 @@ function buildRouter() {
 
       if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
 
-      const pending = await latestPending(apikey);
-      if (pending) {
+      const pendInfo = await recentPendingFor(apikey);
+      if (pendInfo.latest) {
         return res.json({
           status: true, creator: CREATOR, code: 'PAYMENT_ALREADY_PENDING',
           message: 'Masih ada transaksi pending aktif',
-          result: { ...buildCreateResponse(pending, req).result },
+          result: { ...buildCreateResponse(pendInfo.latest, req).result },
         });
       }
 
-      const pc = await pendingCount(apikey);
-      if (pc >= MAX_PENDING_PER_5MIN) {
+      if (pendInfo.count >= MAX_PENDING_PER_5MIN) {
         return res.json(buildErrorResponse(`Maksimal ${MAX_PENDING_PER_5MIN} transaksi pending dalam 5 menit`, 'TOO_MANY_PENDING_PAYMENTS'));
       }
 
@@ -200,6 +218,13 @@ function buildRouter() {
         expires_at: expiresAt,
       };
       await store.savePayment(idtrx, payment);
+      // update index pending per-apikey (create = masuk pending)
+      try {
+        const prev = await store.getPendingByApikey(apikey);
+        const ids = prev.filter((x) => x !== idtrx);
+        ids.push(idtrx);
+        await store.setPendingByApikey(apikey, ids.slice(-20));
+      } catch (_) { /* index best-effort, hot path tetep jalan */ }
       res.json(buildCreateResponse(payment, req));
     } catch (err) {
       console.error('[legacy create]', err.message);
@@ -227,6 +252,7 @@ function buildRouter() {
     if (st === 'expired' || (new Date(p.expires_at || 0).getTime() && new Date(p.expires_at).getTime() < now)) {
       if (st !== 'paid') {
         if (st !== 'expired') await store.patchPayment(idtrx, { status: 'expired' });
+        try { const ids = (await store.getPendingByApikey(apikey)).filter((x) => x !== idtrx); await store.setPendingByApikey(apikey, ids); } catch (_) {}
         return res.json({ status: false, creator: CREATOR, code: 'PAYMENT_EXPIRED', message: 'Expired', payment_status: 'expired' });
       }
     }
@@ -261,6 +287,7 @@ function buildRouter() {
     const nowIso = new Date().toISOString();
     await store.patchPayment(idtrx, { status: 'cancelled', cancelled_at: nowIso, deleted_at: nowIso, deleted_by: 'user' });
     await store.delReservation(p.amount);
+    try { const ids = (await store.getPendingByApikey(apikey)).filter((x) => x !== idtrx); await store.setPendingByApikey(apikey, ids); } catch (_) {}
     await store.log('deletions', { apikey_prefix: apikey.substring(0, 8), idtrx, deleted_at: nowIso });
     res.json({ status: true, creator: CREATOR, code: 'PAYMENT_CANCELLED', message: 'Transaksi dibatalkan' });
   };

@@ -71,11 +71,11 @@ const fire = {
 
   /* SET path → value (null menghapus) */
   async set(path, value) {
-    const ref = getAdminDb().ref(String(path));
     if (MODE === 'memory') {
       pathSet(mem, path.split('/'), value === null ? undefined : value);
       return;
     }
+    const ref = getAdminDb().ref(String(path));
     if (value === null || value === undefined) await ref.remove();
     else await ref.set(value);
   },
@@ -178,6 +178,16 @@ module.exports = {
       .equalTo('pending')
       .once('value');
     return snap.val() || {};
+  },
+
+  /* Pending khusus APIKEY (index ringan per-user, buat create fast +
+     sweeper). Path: payments/__pending_by_apikey__/{apikey}. */
+  async getPendingByApikey(apikey) {
+    const v = await fire.get(`payments/__pending_by_apikey__/${encodeURIComponent(String(apikey).trim())}`);
+    return Array.isArray(v) ? v : [];
+  },
+  async setPendingByApikey(apikey, ids) {
+    await fire.set(`payments/__pending_by_apikey__/${encodeURIComponent(String(apikey).trim())}`, ids.length ? ids : null);
   },
 
   async getReservation(amount) { return fire.get(`payments/__amount_reservations__/${amount}`) || null; },
