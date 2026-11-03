@@ -54,6 +54,12 @@ function crc16Ccitt(str) {
   return crc.toString(16).toUpperCase().padStart(4, "0");
 }
 
+// Env MALAWALI_QRIS_MODE: "dynamic" (default, tag 01=12 + tag 54 nominal)
+// atau "static" (payload asli tag 01=11, customer isi nominal sendiri).
+// DANA QR merchant kadang nolak mode dinamis di scanner — pakai "static"
+// kalau e-wallet eror; matching tetep aman karena nominal unique-fee.
+const QRIS_MODE = (String(process.env.MALAWALI_QRIS_MODE || 'dynamic').toLowerCase()) === 'static' ? 'static' : 'dynamic';
+
 /**
  * Ubah QRIS statis jadi dinamis + sisipkan nominal.
  * @param {string} rawQris payload QRIS statis (tag 01 = 11)
@@ -63,6 +69,11 @@ function crc16Ccitt(str) {
 function generateDynamicQris(rawQris, amount) {
   const clean = String(rawQris || "").trim();
   if (!clean) throw new Error("QRIS statis tidak valid");
+
+  if (QRIS_MODE === 'static') {
+    // payload asli mentah (tag 01=11, customer isi nominal saat scan)
+    return clean;
+  }
 
   // buang tag 63 CRC lama jika ada di akhir
   const lastTagIdx = clean.lastIndexOf("6304");
