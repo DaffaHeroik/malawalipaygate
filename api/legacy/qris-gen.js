@@ -20,24 +20,23 @@ const GOQIS_BASE =
 const QRIS_BASE = String(process.env.MALAWALI_QRIS_BASE || '').trim() || GOQIS_BASE;
 
 // Routing nominal per provider:
-//   Rp 1.000 – Rp 10.000 (base) → Saweria (default: QR URL halaman donasi
-//   https://saweria.co/malawali — model A, scan di browser)
-//   di bawah 1.000 / di atas 10.000 → QRIS GoPay
-// Env override:
-//   MALAWALI_SAWERIA_QRIS_BASE  — set ke payload QRIS EMVCo (000201...) kalau
-//   lo punya QRIS merchant Saweria → scan e-wallet direct; set URL lain
-//   (saweria.co/{user}) kalau halaman donasinya beda.
-//   MALAWALI_SAWERIA_AMOUNT_PARAM — query param nominal (default "amount")
+//   Rp 1.000 – Rp 10.000 (base) → Saweria — QR yang dikasih user tetap QRIS.
+//   Lo set payload QRIS merchant Saweria via env MALAWALI_SAWERIA_QRIS_BASE
+//   (WAJIB string EMVCo mulai "000201"). Selama belum di-set, band 1k-10k
+//   fallback ke QRIS GoPay, dan qr_provider dicatat 'gopay' (supaya deteksi
+//   webhook nge-match QR yang beneran di-scan user).
+//   di bawah 1.000 / di atas 10.000 → QRIS GoPay.
+// User JANGAN PERNAH di-alamin ke halaman donasi — QRIS direct, gw ngecek.
 const SAWERIA_QRIS_BASE = String(process.env.MALAWALI_SAWERIA_QRIS_BASE || '').trim();
+const HAS_SAWERIA_QRIS = /^000201/.test(SAWERIA_QRIS_BASE);
 
 function pickProvider(baseAmount) {
   const n = Number(baseAmount);
-  if (!Number.isFinite(n)) return { provider: 'gopay', base: QRIS_BASE, saweriaConfigured: false };
-  if (n >= 1000 && n <= 10000) {
-    const sawBase = SAWERIA_QRIS_BASE || SAWERIA_URL_DEFAULT;
-    return { provider: 'saweria', base: sawBase, saweriaConfigured: true };
+  if (!Number.isFinite(n)) return { provider: 'gopay', base: QRIS_BASE };
+  if (n >= 1000 && n <= 10000 && HAS_SAWERIA_QRIS) {
+    return { provider: 'saweria', base: SAWERIA_QRIS_BASE };
   }
-  return { provider: 'gopay', base: QRIS_BASE, saweriaConfigured: false };
+  return { provider: 'gopay', base: QRIS_BASE };
 }
 
 function crc16Ccitt(str) {
@@ -84,37 +83,17 @@ function generateDynamicQris(rawQris, amount) {
 
 /**
  * Ambil payload QRIS dinamis untuk nominal tertentu (routing per provider).
- *
- * Kalau payload base-nya QRIS EMVCo (mulai "000201") → tag 54 nominal di-sisipin,
- * hasilnya string EMVCo yang di-scan di e-wallet.
- *
- * Kalau base-nya URL (mulai "http") — mis. halaman donasi Saweria —
- * hasilnya string URL yang (opsional) ditambai query param nominal,
- * di-scan di browser. Env:
- *   MALAWALI_SAWERIA_QRIS_BASE   (default: https://saweria.co/malawali)
- *   MALAWALI_SAWERIA_AMOUNT_PARAM (default: "amount" → ?amount=1000)
+ * Hasil selalu QRIS EMVCo (tag 54 nominal) — provider = provider yang
+ * benar-benar dipakai generate QR (bisa 'gopay' walau base-nya band saweria,
+ * kalau payload Saweria belum di-set).
  * @param {number} amount nominal final rupiah (integer)
  * @param {number} [baseAmount] nominal base — dipakai pilih provider
- * @returns {{provider:string, saweriaConfigured:boolean, text:string}}
+ * @returns {{provider:string, text:string}}
  */
-const SAWERIA_URL_DEFAULT = 'https://saweria.co/malawali';
-const SAWERIA_URL = String(process.env.MALAWALI_SAWERIA_QRIS_BASE || SAWERIA_URL_DEFAULT).trim();
-const SAWERIA_AMOUNT_PARAM = String(process.env.MALAWALI_SAWERIA_AMOUNT_PARAM || 'amount').trim();
-
 function convert(amount, baseAmount) {
   const b = baseAmount !== undefined ? Number(baseAmount) : Number(amount);
-  const { provider, base, saweriaConfigured } = pickProvider(b);
-  if (provider === 'saweria') {
-    // base QRIS EMVCo (000201...) → sisipin tag 54 nominal;
-    // base URL (http...) → query param nominal (halaman donasi)
-    if (/^000201/.test(base)) {
-      return { provider: 'saweria', saweriaConfigured: true, text: generateDynamicQris(base, amount) };
-    }
-    const sep = base.includes('?') ? '&' : '?';
-    const text = base + sep + SAWERIA_AMOUNT_PARAM + '=' + Math.round(Number(amount));
-    return { provider: 'saweria', saweriaConfigured: true, text };
-  }
-  return { provider, saweriaConfigured, text: generateDynamicQris(base, amount) };
+  const { provider, base } = pickProvider(b);
+  return { provider, text: generateDynamicQris(base, amount) };
 }
 
 module.exports = { convert, generateDynamicQris, crc16Ccitt, QRIS_BASE, pickProvider };
