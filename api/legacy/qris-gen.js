@@ -54,19 +54,17 @@ function crc16Ccitt(str) {
   return crc.toString(16).toUpperCase().padStart(4, "0");
 }
 
-// Env MALAWALI_QRIS_MODE (default "prefill"):
-//   prefill — tag 01 dibiarkan 11 (statis) + tag 54 nominal di-pre-fill.
-//             Legal QRIS: merchant statis tetep diterima scanner, nominal
-//             sudah terisi di app (bisa di-edit user, tapi default-nya
-//             persis unique-fee kita). INI mode buat merchant DANA/GoPay
-//             retail — QR dinamis penuh (01=12) DITOLAK acquirer ("ada
-//             kendala pada proses ini").
-//   dynamic — flip 01→12 + tag 54 (nominal strict-lock). Cuma buat
-//             merchant beneran dynamic-capable (acquirer ngijinin).
-//   static  — payload mentah tanpa tag 54 (user ngetik nominal sendiri).
+// Env MALAWALI_QRIS_MODE (default "static"):
+//   static  — payload QR DANA/GoPay ASLI dari dashboard, tanpa modifikasi.
+//             SATU-SATUNYA mode yang terbukti bisa dibayar (acquirer DANA
+//             nolak tag 54 prefill di 01=11, dan nolak 01=12 juga — kedua-
+//            anya error "ada kendala pada proses ini"). User scan → ngetik
+//             nominal unique-fee yang tampil di UI API kita → match exact.
+//   prefill — 01=11 + tag 54 (DANA tolak, jelek).
+//   dynamic — 01=12 + tag 54 (DANA tolak, jelek).
 const QRIS_MODE = (function (m) {
-  const v = String(process.env.MALAWALI_QRIS_MODE || 'prefill').toLowerCase();
-  return v === 'dynamic' || v === 'static' ? v : 'prefill';
+  const v = String(process.env.MALAWALI_QRIS_MODE || 'static').toLowerCase();
+  return ['dynamic', 'static', 'prefill'].includes(v) ? v : 'static';
 })();
 
 /**
