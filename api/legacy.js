@@ -60,15 +60,17 @@ const recentPendingInfo = (list, apikey) => {
 
 /* Index pending per-apikey (lightweight, pengganti full-scan /payments yang
    3-10 detik untuk 17rb record). Index = daftar idtrx pending (20 terakhir).
-   Kalau index kosong (migrasi / pending lama) → full-scan sekali, build index. */
+   Index null (belum pernah dibuat) → full-scan sekali, build index (selalu
+   write balik, bahkan [] — kunci state "sudah migrasi" supaya request
+   berikutnya cepat, bukan full-scan lagi). */
 async function apikeyPendingList(apikey) {
   let ids = await store.getPendingByApikey(apikey);
-  if (!ids.length) {
+  if (ids === null) {
     const all = await store.queryPaymentsByApikey(apikey);
     ids = Object.entries(all)
       .filter(([, v]) => v && v.apikey === apikey && v.status === 'pending')
       .map(([k]) => k);
-    if (ids.length) await store.setPendingByApikey(apikey, ids);
+    await store.setPendingByApikey(apikey, ids);
   }
   return ids;
 }
@@ -220,7 +222,7 @@ function buildRouter() {
       await store.savePayment(idtrx, payment);
       // update index pending per-apikey (create = masuk pending)
       try {
-        const prev = await store.getPendingByApikey(apikey);
+        const prev = (await store.getPendingByApikey(apikey)) || [];
         const ids = prev.filter((x) => x !== idtrx);
         ids.push(idtrx);
         await store.setPendingByApikey(apikey, ids.slice(-20));
@@ -252,7 +254,7 @@ function buildRouter() {
     if (st === 'expired' || (new Date(p.expires_at || 0).getTime() && new Date(p.expires_at).getTime() < now)) {
       if (st !== 'paid') {
         if (st !== 'expired') await store.patchPayment(idtrx, { status: 'expired' });
-        try { const ids = (await store.getPendingByApikey(apikey)).filter((x) => x !== idtrx); await store.setPendingByApikey(apikey, ids); } catch (_) {}
+        try { const ids = ((await store.getPendingByApikey(apikey)) || []).filter((x) => x !== idtrx); await store.setPendingByApikey(apikey, ids); } catch (_) {}
         return res.json({ status: false, creator: CREATOR, code: 'PAYMENT_EXPIRED', message: 'Expired', payment_status: 'expired' });
       }
     }
@@ -287,7 +289,7 @@ function buildRouter() {
     const nowIso = new Date().toISOString();
     await store.patchPayment(idtrx, { status: 'cancelled', cancelled_at: nowIso, deleted_at: nowIso, deleted_by: 'user' });
     await store.delReservation(p.amount);
-    try { const ids = (await store.getPendingByApikey(apikey)).filter((x) => x !== idtrx); await store.setPendingByApikey(apikey, ids); } catch (_) {}
+    try { const ids = ((await store.getPendingByApikey(apikey)) || []).filter((x) => x !== idtrx); await store.setPendingByApikey(apikey, ids); } catch (_) {}
     await store.log('deletions', { apikey_prefix: apikey.substring(0, 8), idtrx, deleted_at: nowIso });
     res.json({ status: true, creator: CREATOR, code: 'PAYMENT_CANCELLED', message: 'Transaksi dibatalkan' });
   };

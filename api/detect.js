@@ -118,7 +118,7 @@ async function matchPayment({ provider, providerTransactionId, amount, occurredA
     // buang dari index pending per-apikey (kalau APIKEY-nya dikenal)
     if (p.apikey) {
       try {
-        const ids = (await store.getPendingByApikey(p.apikey)).filter((x) => x !== p.idtrx);
+        const ids = ((await store.getPendingByApikey(p.apikey)) || []).filter((x) => x !== p.idtrx);
         await store.setPendingByApikey(p.apikey, ids);
       } catch (_) { /* index best-effort */ }
     }
@@ -271,7 +271,7 @@ function buildRouter() {
         await store.delReservation(p.amount);
         if (p.apikey) {
           try {
-            const ids = (await store.getPendingByApikey(p.apikey)).filter((x) => x !== p.idtrx);
+            const ids = ((await store.getPendingByApikey(p.apikey)) || []).filter((x) => x !== p.idtrx);
             await store.setPendingByApikey(p.apikey, ids);
           } catch (_) { /* index best-effort */ }
         }

@@ -181,13 +181,18 @@ module.exports = {
   },
 
   /* Pending khusus APIKEY (index ringan per-user, buat create fast +
-     sweeper). Path: payments/__pending_by_apikey__/{apikey}. */
+     sweeper). Path: payments/__pending_by_apikey__/{apikey}.
+     null = index belum ada (migrasi full-scan sekali).
+     Catatan: array kosong di RTDB di-baca balik sebagai object kosong {},
+     jadi anggap {} = index ada & kosong (JANGAN full-scan berulang). */
   async getPendingByApikey(apikey) {
     const v = await fire.get(`payments/__pending_by_apikey__/${encodeURIComponent(String(apikey).trim())}`);
-    return Array.isArray(v) ? v : [];
+    if (Array.isArray(v)) return v;
+    if (v && typeof v === 'object' && Object.keys(v).length === 0) return [];
+    return null;
   },
   async setPendingByApikey(apikey, ids) {
-    await fire.set(`payments/__pending_by_apikey__/${encodeURIComponent(String(apikey).trim())}`, ids.length ? ids : null);
+    await fire.set(`payments/__pending_by_apikey__/${encodeURIComponent(String(apikey).trim())}`, ids || []);
   },
 
   async getReservation(amount) { return fire.get(`payments/__amount_reservations__/${amount}`) || null; },
