@@ -54,12 +54,20 @@ function crc16Ccitt(str) {
   return crc.toString(16).toUpperCase().padStart(4, "0");
 }
 
-// Env MALAWALI_QRIS_MODE: "dynamic" (default) atau "static".
-// Paygate = QR dinamis: nominal final (unique-fee) di-lock di QR (tag 01=12
-// + tag 54), user tinggal scan & bayar — JANGAN harus ngetik nominal.
-// "static" (payload mentah tag 01=11, user isi nominal) cuma buat
-// emergency kalau ada app e-wallet yang nolak QR dinamis.
-const QRIS_MODE = (String(process.env.MALAWALI_QRIS_MODE || 'dynamic').toLowerCase()) === 'static' ? 'static' : 'dynamic';
+// Env MALAWALI_QRIS_MODE (default "prefill"):
+//   prefill — tag 01 dibiarkan 11 (statis) + tag 54 nominal di-pre-fill.
+//             Legal QRIS: merchant statis tetep diterima scanner, nominal
+//             sudah terisi di app (bisa di-edit user, tapi default-nya
+//             persis unique-fee kita). INI mode buat merchant DANA/GoPay
+//             retail — QR dinamis penuh (01=12) DITOLAK acquirer ("ada
+//             kendala pada proses ini").
+//   dynamic — flip 01→12 + tag 54 (nominal strict-lock). Cuma buat
+//             merchant beneran dynamic-capable (acquirer ngijinin).
+//   static  — payload mentah tanpa tag 54 (user ngetik nominal sendiri).
+const QRIS_MODE = (function (m) {
+  const v = String(process.env.MALAWALI_QRIS_MODE || 'prefill').toLowerCase();
+  return v === 'dynamic' || v === 'static' ? v : 'prefill';
+})();
 
 /**
  * Ubah QRIS statis jadi dinamis + sisipkan nominal.
@@ -80,8 +88,11 @@ function generateDynamicQris(rawQris, amount) {
   const lastTagIdx = clean.lastIndexOf("6304");
   let body = lastTagIdx !== -1 ? clean.slice(0, lastTagIdx) : clean;
 
-  // statis → dinamis
-  body = body.replace("010211", "010212");
+  if (QRIS_MODE === 'dynamic') {
+    // statis → dinamis penuh (01=12, nominal strict-lock)
+    body = body.replace("010211", "010212");
+  }
+  // prefill: tag 01 tetep 11 (merchant statis), nominal di-pre-fill via tag 54
 
   if (amount && amount > 0) {
     const amountStr = Math.round(Number(amount)).toString();
