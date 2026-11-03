@@ -95,6 +95,9 @@ async function matchPayment({ provider, providerTransactionId, amount, occurredA
       p &&
       p.status === 'pending' &&
       Number(p.amount) === Math.round(amount) &&
+      // order dibuat dgn provider routing (pay_provider) → wajib match,
+      // order lama tanpa field → tetap bole (backward compat)
+      (!p.pay_provider || p.pay_provider === provider) &&
       (!userId || p.apikey === userId)
   );
 

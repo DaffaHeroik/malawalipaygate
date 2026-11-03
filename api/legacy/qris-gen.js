@@ -19,6 +19,23 @@ const GOQIS_BASE =
 
 const QRIS_BASE = String(process.env.MALAWALI_QRIS_BASE || '').trim() || GOQIS_BASE;
 
+// Routing nominal per provider:
+//   Rp 1.000 – Rp 10.000 (base) → QRIS Saweria
+//   di bawah 1.000 / di atas 10.000 → QRIS GoPay
+// Payload QRIS Saweria wajib via env MALAWALI_SAWERIA_QRIS_BASE.
+// Kalau belum di-set, fallback ke QRIS GoPay (pembayaran tetap jalan).
+const SAWERIA_QRIS_BASE = String(process.env.MALAWALI_SAWERIA_QRIS_BASE || '').trim();
+
+function pickProvider(baseAmount) {
+  const n = Number(baseAmount);
+  if (!Number.isFinite(n)) return { provider: 'gopay', base: QRIS_BASE, saweriaConfigured: false };
+  if (n >= 1000 && n <= 10000) {
+    if (SAWERIA_QRIS_BASE) return { provider: 'saweria', base: SAWERIA_QRIS_BASE, saweriaConfigured: true };
+    return { provider: 'gopay', base: QRIS_BASE, saweriaConfigured: false };
+  }
+  return { provider: 'gopay', base: QRIS_BASE, saweriaConfigured: false };
+}
+
 function crc16Ccitt(str) {
   let crc = 0xffff;
   const buf = Buffer.from(str, "ascii");
@@ -61,9 +78,16 @@ function generateDynamicQris(rawQris, amount) {
   return body + "6304" + crc16Ccitt(body + "6304");
 }
 
-/** Ambil payload QRIS dinamis untuk nominal tertentu. */
-function convert(amount) {
-  return generateDynamicQris(QRIS_BASE, amount);
+/**
+ * Ambil payload QRIS dinamis untuk nominal tertentu (routing per provider).
+ * @param {number} amount nominal final rupiah (integer, tag 54)
+ * @param {number} [baseAmount] nominal base (tanpa fee) — dipakai buat pilih provider
+ * @returns {{provider:string, saweriaConfigured:boolean, text:string}}
+ */
+function convert(amount, baseAmount) {
+  const b = baseAmount !== undefined ? Number(baseAmount) : Number(amount);
+  const { provider, base, saweriaConfigured } = pickProvider(b);
+  return { provider, saweriaConfigured, text: generateDynamicQris(base, amount) };
 }
 
-module.exports = { convert, generateDynamicQris, crc16Ccitt, QRIS_BASE };
+module.exports = { convert, generateDynamicQris, crc16Ccitt, QRIS_BASE, pickProvider };

@@ -183,13 +183,14 @@ function buildRouter() {
 
       const createdAt = new Date().toISOString();
       const expiresAt = new Date(Date.now() + PAYMENT_EXPIRY_MS).toISOString();
-      const qrisText = qrisGen.convert(alloc.finalAmount);
+      const qris = qrisGen.convert(alloc.finalAmount, baseAmount);
       const payment = {
         apikey, idtrx, invoice_alias: invoiceAlias,
         amount: alloc.finalAmount, base_amount: baseAmount,
         actual_fee_admin: alloc.feeAdmin, unique_fee: alloc.uniqueFee,
         status: 'pending', credited: false,
-        created_at: createdAt, qr_id: idtrx, qris_text: qrisText,
+        created_at: createdAt, qr_id: idtrx, qris_text: qris.text,
+        pay_provider: qris.provider,
         last_checked: null, fee_admin: alloc.feeAdmin,
         expires_at: expiresAt,
       };
