@@ -27,8 +27,9 @@ const { buildErrorResponse, buildCreateResponse, CREATOR, DEFAULT_INVOICE_ALIAS 
 const MIN_AMOUNT = 100;
 const MAX_BASE_AMOUNT = 10000000;
 const ACTUAL_FEE_ADMIN = 0;
-const MIN_UNIQUE_FEE = 0;
-const MAX_UNIQUE_FEE = 110;
+// Unique-fee tanpa satuan: 0 (pass nominal mentah) atau ratusan 100-300
+// (100, 150, 200, 250, 300) supaya final nominal rapi (renamed "Malawali").
+const UNIQUE_FEE_POOL = [0, 100, 150, 200, 250, 300];
 const PAYMENT_EXPIRY_MS = 10 * 60 * 1000;
 const CREATE_COOLDOWN_MS = 20 * 1000;
 const MAX_PENDING_PER_5MIN = 5;
@@ -116,17 +117,20 @@ function verifyLegacyHash(hashField, password) {
 }
 
 async function allocateUniqueFee(baseAmount) {
+  // cursor = index UNIQUE_FEE_POOL (0..5). Pool kecil: 0 atau ratusan
+  // (100/150/200/250/300) — nominal final tetep rapi, matching aman.
   let cursor = await store.getQueueCursor();
-  if (!Number.isInteger(cursor) || cursor < MIN_UNIQUE_FEE || cursor > MAX_UNIQUE_FEE) cursor = MIN_UNIQUE_FEE;
-  for (let i = 0; i <= MAX_UNIQUE_FEE - MIN_UNIQUE_FEE; i++) {
-    const fee = MIN_UNIQUE_FEE + ((cursor - MIN_UNIQUE_FEE + i) % (MAX_UNIQUE_FEE - MIN_UNIQUE_FEE + 1));
+  if (!Number.isInteger(cursor) || cursor < 0 || cursor >= UNIQUE_FEE_POOL.length) cursor = 0;
+  for (let i = 0; i < UNIQUE_FEE_POOL.length; i++) {
+    const idx = (cursor + i) % UNIQUE_FEE_POOL.length;
+    const fee = UNIQUE_FEE_POOL[idx];
     const finalAmount = baseAmount + ACTUAL_FEE_ADMIN + fee;
     const existing = await store.getReservation(finalAmount);
     const expired =
       !existing ||
       !existing.expires_at ||
       new Date(existing.expires_at).getTime() <= Date.now();
-    if (existing && !expired) continue; // masih aktif → fee ini dipakai
+    if (existing && !expired) continue; // masih aktif → nominal ini dipakai
     await store.setReservation(finalAmount, {
       amount: finalAmount,
       base_amount: baseAmount,
@@ -134,7 +138,7 @@ async function allocateUniqueFee(baseAmount) {
       status: 'reserved',
       expires_at: new Date(Date.now() + PAYMENT_EXPIRY_MS).toISOString(),
     });
-    await store.setQueueCursor(fee + 1);
+    await store.setQueueCursor((idx + 1) % UNIQUE_FEE_POOL.length);
     return { finalAmount, uniqueFee: fee, feeAdmin: ACTUAL_FEE_ADMIN };
   }
   return null;
