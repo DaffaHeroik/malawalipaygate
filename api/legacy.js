@@ -44,27 +44,28 @@ function parseAmount(v) {
   return Number.isFinite(n) ? Math.round(n) : NaN;
 }
 
-async function latestPending(apikey) {
+/* Satu query RTDB per request (full-scan /payments = bottleneck;
+   jangan dobelin 2x fetch). Return { latest, count } dari pending
+   5 menit terakhir. */
+const recentPendingInfo = (list, apikey) => {
   const now = Date.now() - 5 * 60000;
-  const all = await store.queryPaymentsByApikey(apikey);
-  let latest = null;
-  for (const p of Object.values(all)) {
+  let latest = null, c = 0;
+  for (const p of Object.values(list)) {
     if (!p || p.apikey !== apikey || p.status !== 'pending') continue;
     const at = new Date(p.created_at || 0).getTime();
     if (!Number.isFinite(at) || at < now) continue;
+    c += 1;
     if (!latest || at > new Date(latest.created_at).getTime()) latest = p;
   }
-  return latest;
+  return { latest, count: c };
+};
+
+async function latestPending(apikey) {
+  return recentPendingInfo(await store.queryPaymentsByApikey(apikey), apikey).latest;
 }
 
 async function pendingCount(apikey) {
-  const now = Date.now() - 5 * 60000;
-  let c = 0;
-  for (const p of Object.values(await store.queryPaymentsByApikey(apikey))) {
-    if (!p || p.apikey !== apikey || p.status !== 'pending') continue;
-    if (new Date(p.created_at || 0).getTime() >= now) c++;
-  }
-  return c;
+  return recentPendingInfo(await store.queryPaymentsByApikey(apikey), apikey).count;
 }
 
 async function generateIdtrx(prefix) {
