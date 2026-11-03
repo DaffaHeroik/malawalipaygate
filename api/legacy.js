@@ -172,7 +172,7 @@ function buildRouter() {
   const r = express.Router();
 
   /* ── /payment/create ── */
-  r.get('/payment/create', async (req, res) => {
+  const createHandler = async (req, res) => {
     try {
       const apikey = sanitizeId(req.query.apikey || req.body?.apikey);
       const amountRaw = req.query.amount ?? req.body?.amount;
@@ -232,8 +232,9 @@ function buildRouter() {
       console.error('[legacy create]', err.message);
       res.json(buildErrorResponse('Gagal membuat transaksi', 'PAYMENT_CREATE_ERROR'));
     }
-  });
-  r.post('/payment/create', (req, res) => r.handle(req, res));
+  };
+  r.get('/payment/create', createHandler);
+  r.post('/payment/create', createHandler);
 
   /* ── /payment/check ── */
   const checkHandler = async (req, res) => {

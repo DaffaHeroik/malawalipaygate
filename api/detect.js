@@ -298,13 +298,14 @@ function normalizeProviderPayload(provider, raw) {
       };
     }
     case 'gopay': {
-      // GoPay merchant notify: { orderCode/merchantOrderId, gwpRef, amount, status }
-      const statusOk = ['SUCCESS', 'PAID', 'SETTLED'].includes(String(raw.status || '').toUpperCase());
+      // GoPay merchant notify (QRIS merchant): { orderCode/merchantOrderId/
+      // orderId, gwpRef, amount/paymentAmount, status/paymentStatus }
+      const statusOk = ['SUCCESS', 'PAID', 'SETTLED'].includes(String(raw.status || raw.paymentStatus || '').toUpperCase());
       if (!statusOk) return { providerTransactionId: null, amount: NaN };
       return {
-        providerTransactionId: String(raw.orderCode || raw.merchantOrderId || raw.gwpRef || ''),
-        amount: Number(raw.amount),
-        occurredAt: raw.timestamp ? new Date(raw.timestamp) : new Date(),
+        providerTransactionId: String(raw.orderCode || raw.merchantOrderId || raw.orderId || raw.gwpRef || ''),
+        amount: Number(raw.amount ?? raw.paymentAmount ?? raw.orderAmount),
+        occurredAt: raw.timestamp ? new Date(raw.timestamp) : (raw.payTime ? new Date(raw.payTime) : new Date()),
         userId: raw.merchantId || null,
         raw,
       };
