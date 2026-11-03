@@ -20,18 +20,22 @@ const GOQIS_BASE =
 const QRIS_BASE = String(process.env.MALAWALI_QRIS_BASE || '').trim() || GOQIS_BASE;
 
 // Routing nominal per provider:
-//   Rp 1.000 – Rp 10.000 (base) → QRIS Saweria
+//   Rp 1.000 – Rp 10.000 (base) → Saweria (default: QR URL halaman donasi
+//   https://saweria.co/malawali — model A, scan di browser)
 //   di bawah 1.000 / di atas 10.000 → QRIS GoPay
-// Payload QRIS Saweria wajib via env MALAWALI_SAWERIA_QRIS_BASE.
-// Kalau belum di-set, fallback ke QRIS GoPay (pembayaran tetap jalan).
+// Env override:
+//   MALAWALI_SAWERIA_QRIS_BASE  — set ke payload QRIS EMVCo (000201...) kalau
+//   lo punya QRIS merchant Saweria → scan e-wallet direct; set URL lain
+//   (saweria.co/{user}) kalau halaman donasinya beda.
+//   MALAWALI_SAWERIA_AMOUNT_PARAM — query param nominal (default "amount")
 const SAWERIA_QRIS_BASE = String(process.env.MALAWALI_SAWERIA_QRIS_BASE || '').trim();
 
 function pickProvider(baseAmount) {
   const n = Number(baseAmount);
   if (!Number.isFinite(n)) return { provider: 'gopay', base: QRIS_BASE, saweriaConfigured: false };
   if (n >= 1000 && n <= 10000) {
-    if (SAWERIA_QRIS_BASE) return { provider: 'saweria', base: SAWERIA_QRIS_BASE, saweriaConfigured: true };
-    return { provider: 'gopay', base: QRIS_BASE, saweriaConfigured: false };
+    const sawBase = SAWERIA_QRIS_BASE || SAWERIA_URL_DEFAULT;
+    return { provider: 'saweria', base: sawBase, saweriaConfigured: true };
   }
   return { provider: 'gopay', base: QRIS_BASE, saweriaConfigured: false };
 }
@@ -80,13 +84,36 @@ function generateDynamicQris(rawQris, amount) {
 
 /**
  * Ambil payload QRIS dinamis untuk nominal tertentu (routing per provider).
- * @param {number} amount nominal final rupiah (integer, tag 54)
- * @param {number} [baseAmount] nominal base (tanpa fee) — dipakai buat pilih provider
+ *
+ * Kalau payload base-nya QRIS EMVCo (mulai "000201") → tag 54 nominal di-sisipin,
+ * hasilnya string EMVCo yang di-scan di e-wallet.
+ *
+ * Kalau base-nya URL (mulai "http") — mis. halaman donasi Saweria —
+ * hasilnya string URL yang (opsional) ditambai query param nominal,
+ * di-scan di browser. Env:
+ *   MALAWALI_SAWERIA_QRIS_BASE   (default: https://saweria.co/malawali)
+ *   MALAWALI_SAWERIA_AMOUNT_PARAM (default: "amount" → ?amount=1000)
+ * @param {number} amount nominal final rupiah (integer)
+ * @param {number} [baseAmount] nominal base — dipakai pilih provider
  * @returns {{provider:string, saweriaConfigured:boolean, text:string}}
  */
+const SAWERIA_URL_DEFAULT = 'https://saweria.co/malawali';
+const SAWERIA_URL = String(process.env.MALAWALI_SAWERIA_QRIS_BASE || SAWERIA_URL_DEFAULT).trim();
+const SAWERIA_AMOUNT_PARAM = String(process.env.MALAWALI_SAWERIA_AMOUNT_PARAM || 'amount').trim();
+
 function convert(amount, baseAmount) {
   const b = baseAmount !== undefined ? Number(baseAmount) : Number(amount);
   const { provider, base, saweriaConfigured } = pickProvider(b);
+  if (provider === 'saweria') {
+    // base QRIS EMVCo (000201...) → sisipin tag 54 nominal;
+    // base URL (http...) → query param nominal (halaman donasi)
+    if (/^000201/.test(base)) {
+      return { provider: 'saweria', saweriaConfigured: true, text: generateDynamicQris(base, amount) };
+    }
+    const sep = base.includes('?') ? '&' : '?';
+    const text = base + sep + SAWERIA_AMOUNT_PARAM + '=' + Math.round(Number(amount));
+    return { provider: 'saweria', saweriaConfigured: true, text };
+  }
   return { provider, saweriaConfigured, text: generateDynamicQris(base, amount) };
 }
 
