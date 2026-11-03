@@ -9,34 +9,36 @@
  * dan recompute CRC16-CCITT (tag 6304).
  */
 
-// QRIS statis default: merchant GoPay Bos ("MUHAMMAD DAFFA RAMADHAN",
-// BIMA, gateway COM.GO-JEK.WWW). Payload asli sudah diverifikasi scanable.
-// Merchant OrderKuota (COM.NOBUBANK.WWW, OK2296369) CLOSED sejak 2026-08-28
-// — JANGAN dipakai lagi (mutasi kering, "QRIS MERCHANT DITUTUP").
-// Bisa di-override via env MALAWALI_QRIS_BASE (payload QRIS statis tag 01=11).
+// Default (fallback semua band): merchant DANA Bisnis "Heroikzre",
+// Kab. Bima, gateway ID.DANA.WWW. Payload asli diverifikasi (CRC match).
+const DANA_QRIS_BASE =
+  "00020101021126570011ID.DANA.WWW011893600915300191307702090019130770303UMI51440014ID.CO.QRIS.WWW0215ID10264914785370303UMI5204737253033605802ID5909Heroikzre6009Kab. Bima6105841136304B738";
+
+// QRIS GoPay (merchant "MUHAMMAD DAFFA RAMADHAN") masih bisa di-override
+// via env MALAWALI_QRIS_BASE (payload QRIS statis tag 01=11) — dipakai hanya
+// sebagai fallback band 1k-10k kalau payload Saweria belum di-set.
 const GOQIS_BASE =
   "00020101021126610014COM.GO-JEK.WWW01189360091437639275970210G7639275970303UMI51440014ID.CO.QRIS.WWW0215ID10265097903940303UMI5204899953033605802ID5924MUHAMMAD DAFFA RAMADHAN,6004BIMA61058411562070703A016304C0A9";
 
 const QRIS_BASE = String(process.env.MALAWALI_QRIS_BASE || '').trim() || GOQIS_BASE;
 
-// Routing nominal per provider:
-//   Rp 1.000 – Rp 10.000 (base) → Saweria — QR yang dikasih user tetap QRIS.
-//   Lo set payload QRIS merchant Saweria via env MALAWALI_SAWERIA_QRIS_BASE
-//   (WAJIB string EMVCo mulai "000201"). Selama belum di-set, band 1k-10k
-//   fallback ke QRIS GoPay, dan qr_provider dicatat 'gopay' (supaya deteksi
-//   webhook nge-match QR yang beneran di-scan user).
-//   di bawah 1.000 / di atas 10.000 → QRIS GoPay.
-// User JANGAN PERNAH di-alamin ke halaman donasi — QRIS direct, gw ngecek.
+// Routing nominal per provider (DANA default semua):
+//   Rp 1.000 – Rp 10.000 (base) → Saweria, KALAU env MALAWALI_SAWERIA_QRIS_BASE
+//   udah di-set payload QRIS EMVCo (mulai "000201"). Kalau belum → DANA.
+//   nominal lainnya (<1.000 / >10.000) → DANA Bisnis.
+// QRIS GoPay (env MALAWALI_QRIS_BASE) ga dipakai routing default — hanya
+// tersedia buat override manual. User JANGAN PERNAH di-alamin ke halaman
+// donasi — QRIS direct, gw ngecek.
 const SAWERIA_QRIS_BASE = String(process.env.MALAWALI_SAWERIA_QRIS_BASE || '').trim();
 const HAS_SAWERIA_QRIS = /^000201/.test(SAWERIA_QRIS_BASE);
 
 function pickProvider(baseAmount) {
   const n = Number(baseAmount);
-  if (!Number.isFinite(n)) return { provider: 'gopay', base: QRIS_BASE };
+  if (!Number.isFinite(n)) return { provider: 'dana', base: DANA_QRIS_BASE };
   if (n >= 1000 && n <= 10000 && HAS_SAWERIA_QRIS) {
     return { provider: 'saweria', base: SAWERIA_QRIS_BASE };
   }
-  return { provider: 'gopay', base: QRIS_BASE };
+  return { provider: 'dana', base: DANA_QRIS_BASE };
 }
 
 function crc16Ccitt(str) {
