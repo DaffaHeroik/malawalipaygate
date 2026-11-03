@@ -407,6 +407,9 @@ function buildRouter() {
       status: true, creator: CREATOR, code: 'PROFILE_OK', message: 'Profil diambil',
       result: {
         api_key: apikey, email: u.email || null, name: u.name || null,
+        user_id: u.id || apikey,
+        member_since: u.created_at || null,
+        telegram_id: u.telegram_id || u.telegram || null,
         plan: u.plan || 'warga', invoice_alias: u.invoice_alias || DEFAULT_INVOICE_ALIAS,
         saldo: u.saldo || 0, webhooks: await store.getWebhooks(apikey),
       },

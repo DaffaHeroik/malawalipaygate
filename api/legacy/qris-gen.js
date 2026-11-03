@@ -45,17 +45,17 @@ function crc16Ccitt(str) {
   return crc.toString(16).toUpperCase().padStart(4, "0");
 }
 
-// Env MALAWALI_QRIS_MODE (default "static"):
-//   static  — payload QR DANA/GoPay ASLI dari dashboard, tanpa modifikasi.
-//             SATU-SATUNYA mode yang terbukti bisa dibayar (acquirer DANA
-//             nolak tag 54 prefill di 01=11, dan nolak 01=12 juga — kedua-
-//            anya error "ada kendala pada proses ini"). User scan → ngetik
-//             nominal unique-fee yang tampil di UI API kita → match exact.
-//   prefill — 01=11 + tag 54 (DANA tolak, jelek).
-//   dynamic — 01=12 + tag 54 (DANA tolak, jelek).
-const QRIS_MODE = (function (m) {
-  const v = String(process.env.MALAWALI_QRIS_MODE || 'static').toLowerCase();
-  return ['dynamic', 'static', 'prefill'].includes(v) ? v : 'static';
+// Env MALAWALI_QRIS_MODE (default "dynamic"):
+//   dynamic — tag 01=12 + tag 54: nominal final DI-LOCK di QR, user tinggal
+//             scan + bayar, ga perlu ngetik nominal. INI mode paygate.
+//   prefill — 01=11 + tag 54 (nominal terisi tapi masih bisa diedit user).
+//   static  — payload mentah dari dashboard (user ngetik nominal sendiri) —
+//             fallback emergency kalau acquirer nolak QR dinamis.
+// Riwayat: acquirer DANA nolak dynamic+prefill (ledger #026). GoPay belum
+// dites scan-nya — kalau GoPay juga nolak, set MALAWALI_QRIS_MODE=static.
+const QRIS_MODE = (function () {
+  const v = String(process.env.MALAWALI_QRIS_MODE || 'dynamic').toLowerCase();
+  return ['dynamic', 'static', 'prefill'].includes(v) ? v : 'dynamic';
 })();
 
 /**
