@@ -346,6 +346,22 @@ function buildRouter() {
   r.get('/payment/alias/update', aliasHandler);
   r.post('/payment/alias/update', aliasHandler);
 
+  /* ── /system/config — status aplikasi utk SPA (default: normal) ──
+     Bisa di-override manual via RTDB system/config (maintenance, dsb). */
+  const SYSTEM_CONFIG_DEFAULTS = {
+    api_status: true, maintenance_mode: false,
+    withdraw_status: true, maintenance_message: '',
+  };
+  r.get('/system/config', async (req, res) => {
+    let cfg = { ...SYSTEM_CONFIG_DEFAULTS };
+    try {
+      const custom = await store.getPath('system/config');
+      if (custom && typeof custom === 'object') cfg = { ...cfg, ...custom };
+    } catch (_) { /* pakai default */ }
+    res.json({ status: true, creator: CREATOR, code: 'SYSTEM_CONFIG',
+      message: 'Konfigurasi diambil', result: cfg });
+  });
+
   /* ── /qris/:id ── */
   r.get('/qris/:id', async (req, res) => {
     const p = await store.getPayment(req.params.id);

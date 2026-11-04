@@ -183,16 +183,23 @@ module.exports = {
   /* Pending khusus APIKEY (index ringan per-user, buat create fast +
      sweeper). Path: payments/__pending_by_apikey__/{apikey}.
      null = index belum ada (migrasi full-scan sekali).
-     Catatan: array kosong di RTDB di-baca balik sebagai object kosong {},
-     jadi anggap {} = index ada & kosong (JANGAN full-scan berulang). */
+     SENTINEL_EMPTY = ['~']: node di RTDB TIDAK boleh disimpan kosong
+     (set([]) menghapus node → baca balik null → dianggap belum migrasi
+     → full-scan berulang. '~' tidak akan pernah jadi idtrx valid, jadi
+     aman sebagai placeholder; buang saat di-consume). */
   async getPendingByApikey(apikey) {
     const v = await fire.get(`payments/__pending_by_apikey__/${encodeURIComponent(String(apikey).trim())}`);
-    if (Array.isArray(v)) return v;
-    if (v && typeof v === 'object' && Object.keys(v).length === 0) return [];
+    if (Array.isArray(v)) return v.filter((x) => x !== '~');
+    if (v && typeof v === 'object') {
+      const keys = Object.keys(v).filter((k) => k !== '~');
+      return keys.length ? keys.map((k) => v[k]) : [];
+    }
     return null;
   },
   async setPendingByApikey(apikey, ids) {
-    await fire.set(`payments/__pending_by_apikey__/${encodeURIComponent(String(apikey).trim())}`, ids || []);
+    const clean = (ids || []).filter((x) => x && x !== '~');
+    await fire.set(`payments/__pending_by_apikey__/${encodeURIComponent(String(apikey).trim())}`,
+      clean.length ? clean : ['~']);
   },
 
   async getReservation(amount) { return fire.get(`payments/__amount_reservations__/${amount}`) || null; },
