@@ -29,8 +29,8 @@ const MAX_BASE_AMOUNT = 10000000;
 const ACTUAL_FEE_ADMIN = 0;
 // Unique-fee tanpa satuan: 0 (pass nominal mentah) atau ratusan 100-300
 // (100, 150, 200, 250, 300) supaya final nominal rapi (renamed "Malawali").
-const UNIQUE_FEE_POOL = [0, 100, 150, 200, 250, 300];
-const PAYMENT_EXPIRY_MS = 10 * 60 * 1000;
+const UNIQUE_FEE_POOL = [50, 100, 150, 200, 250, 300];
+const PAYMENT_EXPIRY_MS = 2 * 60 * 1000;
 const CREATE_COOLDOWN_MS = 20 * 1000;
 const MAX_PENDING_PER_5MIN = 5;
 const MAX_INVOICE_ALIAS_LENGTH = 4;
@@ -46,12 +46,16 @@ function parseAmount(v) {
 
 /* Filter pending ≤5 menit terakhir dari daftar record payment. */
 const recentPendingInfo = (list, apikey) => {
-  const now = Date.now() - 5 * 60000;
+  const now = Date.now();
+  const windowMs = 5 * 60000;
   let latest = null, c = 0;
   for (const p of Object.values(list)) {
     if (!p || p.apikey !== apikey || p.status !== 'pending') continue;
     const at = new Date(p.created_at || 0).getTime();
-    if (!Number.isFinite(at) || at < now) continue;
+    if (!Number.isFinite(at) || at < now - windowMs) continue;
+    // expiry 2 menit: order yang lewat expires_at ga dihitung "aktif" lagi
+    const exp = new Date(p.expires_at || 0).getTime();
+    if (Number.isFinite(exp) && exp > 0 && exp < now) continue;
     c += 1;
     if (!latest || at > new Date(latest.created_at).getTime()) latest = p;
   }
@@ -255,6 +259,7 @@ function buildRouter() {
     if (st === 'expired' || (new Date(p.expires_at || 0).getTime() && new Date(p.expires_at).getTime() < now)) {
       if (st !== 'paid') {
         if (st !== 'expired') await store.patchPayment(idtrx, { status: 'expired' });
+        await store.delReservation(p.amount);
         try { const ids = ((await store.getPendingByApikey(apikey)) || []).filter((x) => x !== idtrx); await store.setPendingByApikey(apikey, ids); } catch (_) {}
         return res.json({ status: false, creator: CREATOR, code: 'PAYMENT_EXPIRED', message: 'Expired', payment_status: 'expired' });
       }
