@@ -478,12 +478,14 @@ function buildRouter() {
   });
 
   /* ── withdraw/history ── */
-  r.get('/withdraw/history', async (req, res) => {
-    const apikey = sanitizeId(req.query.apikey);
+  const withdrawHistoryHandler = async (req, res) => {
+    const apikey = sanitizeId(req.query.apikey || req.body?.apikey);
     if (!apikey) return res.json(buildErrorResponse('apikey wajib diisi', 'INVALID_REQUEST'));
     const list = await store.getWithdraws(apikey);
     res.json({ status: true, creator: CREATOR, code: 'WITHDRAW_HISTORY', message: 'Riwayat diambil', result: list });
-  });
+  };
+  r.get('/withdraw/history', withdrawHistoryHandler);
+  r.post('/withdraw/history', withdrawHistoryHandler);
 
   return r;
 }

@@ -146,6 +146,27 @@ module.exports = {
     return out;
   },
 
+  /* Cache ringan pending (TTL default 10 detik) — buat endpoint /api/pending
+     yang di-poll go-mutasi-poller tiap 10s. 1 query per TTL, bukan per request. */
+  _pendingCache: null,
+  async cachedPendingPayments(ttlMs = 10000) {
+    const now = Date.now();
+    if (this._pendingCache && now - this._pendingCache.ts < ttlMs) return this._pendingCache.items;
+    const all = await this.pendingPayments();
+    const items = Object.values(all)
+      .filter((p) => p && p.status === 'pending')
+      .map((p) => ({
+        idtrx: p.idtrx,
+        apikey: p.apikey || null,
+        amount: Number(p.amount) || 0,
+        created_at: p.created_at || null,
+        expires_at: p.expires_at || null,
+        pay_provider: p.pay_provider || null,
+      }));
+    this._pendingCache = { ts: now, items };
+    return items;
+  },
+
   /* Query terfilter (hemat payload — full download 16k records ≈ 60s, ga kepake di hot path).
    * Memory mode: filter di memori. */
   async queryPaymentsByApikey(apikey) {

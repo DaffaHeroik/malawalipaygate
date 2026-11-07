@@ -251,6 +251,20 @@ function buildRouter() {
   });
 
   /* ── /cron/detect — sweeper order pending yang sudah lewat TTL ── */
+  /* ── /api/pending — daftar order pending (cache 10s) buat go-mutasi-poller ── */
+  r.get('/api/pending', async (req, res) => {
+    const listenerToken = String(process.env.LEGACY_LISTENER_TOKEN || '').trim();
+    const provided = String(req.get('x-listener-token') || req.get('x-api-key') || '').trim();
+    if (listenerToken) {
+      if (!safeEqual(provided, listenerToken)) {
+        return res.status(401).json({ ok: false, error: { code: 'unauthorized', message: 'Listener token tidak valid.' } });
+      }
+    }
+    const ttl = Math.min(30000, Math.max(1000, Number(req.query.ttl_ms) || 10000));
+    const items = await store.cachedPendingPayments(ttl);
+    res.json({ ok: true, data: { pending: items, count: items.length, ts: new Date().toISOString() } });
+  });
+
   r.get('/cron/detect', async (req, res) => {
     // fail-closed: secret WAJIB cocok (jika WEBHOOK_SECRET terpasang).
     const secret = String(req.query.secret || req.get('x-cron-secret') || '');
