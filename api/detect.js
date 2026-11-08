@@ -295,6 +295,23 @@ function buildRouter() {
     res.json({ ok: true, data: { expired_marked: expired, ts: now.toISOString() } });
   });
 
+  /* ── /cron/backfill-users — isi field users/* yang kosong biar sinkron dengan
+     field yang dibaca SPA (name/created_at/telegram). Auth sama persis dengan
+     /cron/detect (secret = LEGACY_WEBHOOK_SECRET). Idempotent: cuma nambahin
+     field kosong. */
+  r.get('/cron/backfill-users', async (req, res) => {
+    const secret = String(req.query.secret || req.get('x-cron-secret') || '');
+    if (!WEBHOOK_SECRET) {
+      return res.status(503).json({ ok: false, error: { code: 'not_configured', message: 'LEGACY_WEBHOOK_SECRET belum di-set.' } });
+    }
+    if (!safeEqual(secret, WEBHOOK_SECRET)) {
+      return res.status(401).json({ ok: false, error: { code: 'unauthorized', message: 'Secret salah.' } });
+    }
+    const { backfillUsers } = require('./legacy/backfill');
+    const report = await backfillUsers();
+    res.json({ ok: true, data: report });
+  });
+
   return r;
 }
 
