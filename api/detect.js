@@ -307,8 +307,14 @@ function buildRouter() {
     if (!safeEqual(secret, WEBHOOK_SECRET)) {
       return res.status(401).json({ ok: false, error: { code: 'unauthorized', message: 'Secret salah.' } });
     }
-    const { backfillUsers } = require('./legacy/backfill');
-    const report = await backfillUsers();
+    const { backfillUsers, clearBackfillCheckpoints } = require('./legacy/backfill');
+    const action = String(req.query.action || 'run');
+    if (action === 'reset') {
+      await clearBackfillCheckpoints();
+      return res.json({ ok: true, data: { message: 'checkpoint dihapus, backfill ulang dari awal' } });
+    }
+    const maxSeconds = Math.min(280, Math.max(10, Number(req.query.max_seconds) || 180));
+    const report = await backfillUsers({ maxSeconds });
     res.json({ ok: true, data: report });
   });
 

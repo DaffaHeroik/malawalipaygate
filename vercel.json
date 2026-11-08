@@ -1,7 +1,7 @@
 {
   "version": 2,
   "builds": [
-    { "src": "vercel/entry.js", "use": "@vercel/express" }
+    { "src": "vercel/entry.js", "use": "@vercel/express", "maxDuration": 300 }
   ],
   "routes": [
     { "src": "/(.*)", "dest": "vercel/entry.js" }
