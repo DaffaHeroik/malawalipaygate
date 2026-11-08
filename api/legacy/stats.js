@@ -81,15 +81,14 @@ async function recordBatch(months, flagsPerMonth = null) {
     if (!pays || !pays.length) continue;
     const path = `meta/stats/months/${m}`;
     const base = (await store.getPath(path)) || {};
-    const s = base && typeof base === 'object' ? { ...base } : {};
     const monthFlags = (flagsPerMonth && flagsPerMonth[m]) || {};
+    let s = base && typeof base === 'object' ? { ...base } : {};
     let offset = 0;
     while (offset < pays.length) {
       const part = pays.slice(offset, offset + SLICE);
       const cum = { ...s };
       for (const p of part) incrementStats(cum, p);
-      // flag hanya di-slice PERTAMA (biar semua masuk 1 set ops, tapi
-      // tetap per-slice di sini — atomik per slice)
+      // flag hanya di-slice PERTAMA
       const ops = { [path]: cum };
       if (offset === 0) Object.assign(ops, monthFlags);
       await store.multiSet(ops);
