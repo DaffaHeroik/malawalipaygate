@@ -70,17 +70,32 @@ async function recordTerminal(payment, { atomically = false } = {}) {
   await store.updateMonthStats(m, (cur) => incrementStats(cur && typeof cur === 'object' ? { ...cur } : {}, payment), extra);
 }
 
-/* Batch: N record sekaligus, 1 read + 1 multi-write per bulan.
+/* Batch: N record sekaligus, 1 read + multi-write ter-slice (≤100 ops
+   per multi — aman batas operasi RTDB). State bulan di-akumulasikan
+   lokal antar-slice (carry forward) sehingga hasil sama dgn 1 write.
    `flagsPerMonth` (opsional) = { 'YYYY-MM': { 'payments/X/stats_recorded': true } }
-   — flag per-bulan di-apply ATOMIK bareng bulan itu sendiri (all-or-nothing).
    months: { 'YYYY-MM': [p1, p2, ...] } */
 async function recordBatch(months, flagsPerMonth = null) {
+  const SLICE = 100;
   for (const [m, pays] of Object.entries(months || {})) {
     if (!pays || !pays.length) continue;
-    const cur = (await store.getPath(`meta/stats/months/${m}`)) || {};
-    const s = cur && typeof cur === 'object' ? { ...cur } : {};
-    for (const p of pays) incrementStats(s, p);
-    await store.multiSet({ [`meta/stats/months/${m}`]: s, ...((flagsPerMonth && flagsPerMonth[m]) || {}) });
+    const path = `meta/stats/months/${m}`;
+    const base = (await store.getPath(path)) || {};
+    const s = base && typeof base === 'object' ? { ...base } : {};
+    const monthFlags = (flagsPerMonth && flagsPerMonth[m]) || {};
+    let offset = 0;
+    while (offset < pays.length) {
+      const part = pays.slice(offset, offset + SLICE);
+      const cum = { ...s };
+      for (const p of part) incrementStats(cum, p);
+      // flag hanya di-slice PERTAMA (biar semua masuk 1 set ops, tapi
+      // tetap per-slice di sini — atomik per slice)
+      const ops = { [path]: cum };
+      if (offset === 0) Object.assign(ops, monthFlags);
+      await store.multiSet(ops);
+      s = cum; // carry forward
+      offset += SLICE;
+    }
   }
 }
 

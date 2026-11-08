@@ -44,7 +44,9 @@ const FIREBASE_URL = String(process.env.FIREBASE_URL || 'https://heropayment-132
 const MODE = process.env.LEGACY_STORE_MODE === 'memory' ? 'memory' : 'firebase';
 
 let adminDb = null;
+let adminDbOverride = null; // dipakai script lokal (proxy/REST)
 function getAdminDb() {
+  if (adminDbOverride) return adminDbOverride;
   if (adminDb) return adminDb;
   const sa = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (!sa) {
@@ -104,6 +106,7 @@ const keyPath = (k) => `apikeys/${encodeURIComponent(String(k).trim())}`;
 module.exports = {
   MODE,
   FIREBASE_URL,
+  setAdminDbOverride(db) { adminDbOverride = db || null; },
 
   async verifyApiKey(apikey) {
     const v = await fire.get(keyPath(apikey));
@@ -314,14 +317,15 @@ module.exports = {
     return next;
   },
 
-  /* Satu update atomik multi-path — atomik di server: semua ops
-   * ter-apply atau tidak ada yang ter-apply. `ops` = { 'path/a': v, ... } */
+  /* Satu update atomik multi-path — `db.ref().update(ops)` = atomic
+   * multi-location update di server (semua ops ter-apply atau tidak ada
+   * yang ter-apply). `ops` = { 'path/a': v, ... } */
   async multiSet(ops) {
     if (!ops || !Object.keys(ops).length) return;
     if (MODE === 'memory') {
       for (const [p, v] of Object.entries(ops)) await fire.set(p, v);
       return;
     }
-    await getAdminDb().ref().multi(ops);
+    await getAdminDb().ref().update(ops);
   },
 };
