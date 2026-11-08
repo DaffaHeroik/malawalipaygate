@@ -3,23 +3,23 @@
 /**
  * Backfill users/* di RTDB biar semua field yang dibaca SPA tersedia:
  *   - name        (fallback dari email)
- *   - created_at  (fallback: created_at payment tertua [query ringan, 2.5s],
+ *   - created_at  (fallback: created_at payment tertua [query 2.5s timeout],
  *                  kalau query gagal/kosong → now)
  *   - telegram    (fallback dari telegram_id)
  *
- * Vercel function timeout bikin backfill 85k+ user ga muat di satu request.
- * Cara kerjanya:
- *  - parallel pool (concurrency 25) biar RTDB call overlap
- *  - checkpoint `meta/backfill_users_done/{key}` — invocation berikutnya
- *    lanjut dari titik terakhir, key yg sudah diproses tidak diulang
- *  - `?limit=N` — stop setelah N key (setiap invocation bikin progres pasti)
+ * Cara kerja (Vercel function timeout-friendly):
+ *  - Kunci di-sorted → urutannya stabil antar-invocation
+ *  - Cursor index di `meta/backfill_users_cursor` — tiap invocation mulai
+ *    dari situ, proses ?limit=N key, simpan cursor baru. Gak ada scan
+ *    85k checkpoint tiap run.
+ *  - `?action=reset` = balik cursor ke 0
  *
  * Idempotent: hanya MENAMBAH field yang kosong, ga ngubek field yg sudah ada.
  */
 
 const store = require('./store');
 
-const CHECKPOINT_PREFIX = 'meta/backfill_users_done/';
+const CURSOR_PATH = 'meta/backfill_users_cursor';
 const PAYMENT_QUERY_TIMEOUT_MS = 2500;
 
 async function withTimeout(promise, ms) {
@@ -46,14 +46,11 @@ async function processUser(key) {
   }
   if (u.telegram_id && !u.telegram) patch.telegram = u.telegram_id;
 
-  if (Object.keys(patch).length) {
-    await store.patchUser(key, patch);
-  }
-  await store.setPath(CHECKPOINT_PREFIX + encodeURIComponent(key), true);
+  if (Object.keys(patch).length) await store.patchUser(key, patch);
   return patch;
 }
 
-async function backfillUsers({ maxSeconds = 180, limit = 0, concurrency = 25 } = {}) {
+async function backfillUsers({ maxSeconds = 180, limit = 0, concurrency = 10 } = {}) {
   const keys = await store.getApikeySet();
   const valid = Object.entries(keys)
     .filter(([, v]) => v === true || v === 'true')
@@ -61,41 +58,32 @@ async function backfillUsers({ maxSeconds = 180, limit = 0, concurrency = 25 } =
     .filter((k) => !k.startsWith('meta/'))
     .sort();
 
-  // checkpoint batch (parallel)
-  const toCheck = valid;
-  const remaining = await (async () => {
-    const out = [];
-    for (let i = 0; i < toCheck.length; i += concurrency) {
-      const chunk = toCheck.slice(i, i + concurrency);
-      const results = await Promise.all(
-        chunk.map(async (k) => {
-          const done = await store.getPath(CHECKPOINT_PREFIX + encodeURIComponent(k));
-          return done !== true && done !== 'true' ? k : null;
-        })
-      );
-      out.push(...results.filter(Boolean));
-    }
-    return out;
-  })();
+  const cursorRaw = await store.getPath(CURSOR_PATH);
+  const start = Math.max(0, Math.min(Number(cursorRaw) || 0, valid.length));
 
-  const todo = limit > 0 ? remaining.slice(0, limit) : remaining;
+  const count = limit > 0 ? Math.min(limit, valid.length - start) : valid.length - start;
+  const slice = valid.slice(start, start + count);
+
   const report = {
     total: valid.length,
-    remainingBefore: remaining.length,
+    startedAt: start,
     processedThisRun: 0,
     changed: 0,
     details: [],
+    cursor: start,
     finished: false,
     nextHint: null,
   };
 
   const deadline = Date.now() + maxSeconds * 1000;
-  let cursor = 0;
+  let i = 0;
 
-  const workers = Array.from({ length: Math.min(concurrency, todo.length) }, async () => {
-    while (cursor < todo.length && Date.now() < deadline) {
-      const idx = cursor++;
-      const key = todo[idx];
+  // pool: tiap worker ambil key dari slice (atomic via ++), checkpoint cursor
+  // disimpan SETELAH batch kecil biar progres tidak banyak yang hilang saat 524.
+  const workers = Array.from({ length: Math.min(concurrency, slice.length) }, async () => {
+    while (i < slice.length && Date.now() < deadline) {
+      const idx = i++;
+      const key = slice[idx];
       try {
         const patch = await processUser(key);
         report.processedThisRun++;
@@ -103,24 +91,31 @@ async function backfillUsers({ maxSeconds = 180, limit = 0, concurrency = 25 } =
           report.changed++;
           if (report.details.length < 100) report.details.push({ apikey: key, fields: Object.keys(patch) });
         }
-      } catch (e) {
-        // satu key gagal gak bikin seluruh batch gagal (checkpoint belum di-set → diulang invocation berikutnya)
+      } catch (_) {
+        // key gagal: tetap lanjut (field kosong bukan blocker), tidak dicekpoint
+      }
+      // checkpoint tiap 50 key — kalau function mati, max 50 x concurrency hilang
+      if (report.processedThisRun % 50 === 0) {
+        await store.setPath(CURSOR_PATH, start + report.processedThisRun);
+        report.cursor = start + report.processedThisRun;
       }
     }
   });
-
   await Promise.all(workers);
 
-  report.finished = report.processedThisRun >= remaining.length;
+  const advanced = report.processedThisRun;
+  await store.setPath(CURSOR_PATH, start + advanced);
+  report.cursor = start + advanced;
+  report.finished = start + advanced >= valid.length;
   if (!report.finished) {
-    report.nextHint = `processed ${report.processedThisRun}/${remaining.length} — jalankan lagi /cron/backfill-users (checkpoint sudah disimpan)`;
+    report.nextHint = `cursor=${start + advanced}/${valid.length} — jalankan lagi /cron/backfill-users`;
   }
   return report;
 }
 
-/* Hapus semua checkpoint (setelah backfill benar-benar kelar total). */
-async function clearBackfillCheckpoints() {
-  await store.setPath('meta/backfill_users_done', null);
+async function resetCursor() {
+  await store.setPath(CURSOR_PATH, 0);
+  return true;
 }
 
-module.exports = { backfillUsers, clearBackfillCheckpoints };
+module.exports = { backfillUsers, resetCursor };
