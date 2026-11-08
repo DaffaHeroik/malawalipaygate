@@ -31,26 +31,21 @@ const stats = require('/root/malawali-payment/api/legacy/stats');
   const wipeFirst = process.argv[2] === 'wipe';
   let chunk = 0;
   let totalRecorded = 0;
-  let force = true; // mulai force (rebuild); setelah satu chunk sukses,
-  // lanjut non-force (skip flagged — idempotent, tak double-count)
   for (;;) {
     chunk++;
     const t0 = Date.now();
+    // force=true di SEMUA chunk (rebuild penuh dari nol — wipe sudah
+    // reset stats; flag lama dari migrasi live pertama harus di-abaikan)
     let r;
     try {
-      r = await retention.migrateStats({ limit: 500, force, wipe: wipeFirst });
+      r = await retention.migrateStats({ limit: 500, force: true, wipe: wipeFirst && chunk === 1 });
     } catch (e) {
-      // slice multi gagal (timeout proxy dsb) → lanjut non-force (aman,
-      // flag atomik dgn stats per-slice, hanya record TIDAK ber-flag yang
-      // di-ulang — tidak double-count)
-      console.log(`chunk ${chunk} gagal (${e.message}) — fallback non-force`);
-      force = false;
-      r = await retention.migrateStats({ limit: 500, force, wipe: false });
+      console.log(`chunk ${chunk} gagal (${e.message}) — stop aman, jalankan ulang`);
+      process.exit(2);
     }
     totalRecorded += r.recorded;
     console.log(`chunk ${chunk}: recorded=${r.recorded} ${((Date.now() - t0) / 1000).toFixed(1)}s cursor=${r.cursor}${r.finished ? ' [SELESAI]' : ''}`);
     if (r.finished) break;
-    force = false;
     if (chunk > 120) throw new Error('terlalu banyak chunk, berhenti aman');
   }
   console.log('TOTAL recorded:', totalRecorded);

@@ -146,12 +146,14 @@ module.exports = {
     obj = obj && typeof obj === 'object' ? obj : {};
     const keys = Object.keys(obj).sort();
     return {
-      startAt(from) { this._memFrom = from; return this; },
+      startAt(from) { this._memFrom = from; this._memIncl = true; return this; },
+      startAfter(from) { this._memFrom = from; this._memIncl = false; return this; },
       limitToFirst(n) { this._memLimit = n; return this; },
       once() {
         const from = this._memFrom || '';
         const lim = this._memLimit || keys.length;
-        const slice = keys.filter((k) => (from ? k >= from : true)).slice(0, lim);
+        // startAfter = strictly greater; startAt = >=
+        const slice = keys.filter((k) => (from ? (this._memIncl === false ? k > from : k >= from) : true)).slice(0, lim);
         const sub = {};
         for (const k of slice) sub[k] = obj[k];
         return Promise.resolve({ val: () => sub });

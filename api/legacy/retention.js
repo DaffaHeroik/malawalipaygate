@@ -62,9 +62,11 @@ async function migrateStats({ limit = 500, force = false, wipe = false } = {}) {
     report.wiped = true;
   }
 
-  const cursor = force ? '' : ((await store.getPath('meta/retention_stats_cursor')) || '');
+  // force hanya bikin record ber-flag di-record ulang — cursor tetap
+  // lanjut (bukan reset), biar chunk-nya bergerak.
+  const cursor = (await store.getPath('meta/retention_stats_cursor')) || '';
   let q = getRef('payments').orderByKey().limitToFirst(Number(limit));
-  if (cursor) q = q.startAt(cursor);
+  if (cursor) q = q.startAfter(cursor); // strict: record sebelumnya SKIP
   const snap = await q.once('value');
   const chunk = snap.val() || {};
   const keys = Object.keys(chunk);
