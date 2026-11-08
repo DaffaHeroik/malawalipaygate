@@ -392,7 +392,14 @@ function buildRouter() {
     if (!ok) return res.json(buildErrorResponse('Password tidak valid', 'INVALID_PASSWORD'));
     res.json({
       status: true, creator: CREATOR, code: 'AUTH_OK', message: 'Login berhasil',
-      result: { api_key: apikey, email: user.email || null, name: user.name || null, plan: user.plan || 'warga', uid: apikey },
+      result: {
+        api_key: apikey, email: user.email || null, name: user.name || null,
+        plan: user.plan || 'warga', uid: apikey,
+        nama: user.name || null,
+        // SPA profile card baca field "created_at" & "telegram" (bukan member_since/telegram_id)
+        created_at: user.created_at || null,
+        telegram: user.telegram || user.telegram_id || null,
+      },
     });
   });
 
@@ -460,8 +467,11 @@ function buildRouter() {
       result: {
         api_key: apikey, email: u.email || null, name: u.name || null,
         user_id: u.id || apikey,
+        nama: u.name || null,
         member_since: u.created_at || null,
-        telegram_id: u.telegram_id || u.telegram || null,
+        // SPA read field "created_at" & "telegram" (bukan member_since/telegram_id)
+        created_at: u.created_at || null,
+        telegram: u.telegram || u.telegram_id || null,
         plan: u.plan || 'warga', invoice_alias: u.invoice_alias || DEFAULT_INVOICE_ALIAS,
         saldo: u.saldo || 0, webhooks: await store.getWebhooks(apikey),
       },
