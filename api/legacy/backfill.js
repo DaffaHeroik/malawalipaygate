@@ -7,14 +7,12 @@
  *                  kalau query gagal/kosong → now)
  *   - telegram    (fallback dari telegram_id)
  *
- * Cara kerja (Vercel function timeout-friendly):
- *  - Kunci di-sorted → urutannya stabil antar-invocation
- *  - Cursor index di `meta/backfill_users_cursor` — tiap invocation mulai
- *    dari situ, proses ?limit=N key, simpan cursor baru. Gak ada scan
- *    85k checkpoint tiap run.
- *  - `?action=reset` = balik cursor ke 0
- *
- * Idempotent: hanya MENAMBAH field yang kosong, ga ngubek field yg sudah ada.
+ * DESAIN (Vercel function timeout-friendly):
+ *  - TIDAK full-download apikeys/* (85k key = >60s sendiri, selalu 524).
+ *  - Iterasi `users/` per-batch: orderByKey().startAt(cursor).limitToFirst(N).
+ *  - Cursor = key terakhir yang diproses (string), disimpan di
+ *    `meta/backfill_users_cursor`. Tiap invocation lanjut dari situ.
+ *  - Idempotent: hanya MENAMBAH field yang kosong, ga ngubek yg sudah ada.
  */
 
 const store = require('./store');
@@ -50,40 +48,35 @@ async function processUser(key) {
   return patch;
 }
 
-async function backfillUsers({ maxSeconds = 180, limit = 0, concurrency = 10 } = {}) {
-  const keys = await store.getApikeySet();
-  const valid = Object.entries(keys)
-    .filter(([, v]) => v === true || v === 'true')
-    .map(([k]) => k)
-    .filter((k) => !k.startsWith('meta/'))
-    .sort();
+async function backfillUsers({ limit = 300, concurrency = 10 } = {}) {
+  const getRef = store.getAdminRefForBackfill;
+  if (!getRef) throw new Error('backfill butuh mode firebase');
+  const cursor = (await store.getPath(CURSOR_PATH)) || '';
 
-  const cursorRaw = await store.getPath(CURSOR_PATH);
-  const start = Math.max(0, Math.min(Number(cursorRaw) || 0, valid.length));
-
-  const count = limit > 0 ? Math.min(limit, valid.length - start) : valid.length - start;
-  const slice = valid.slice(start, start + count);
+  // chunk users/ mulai dari cursor (startAt inklusif — key pertama diulang,
+  // idempotent jadi aman), ambil `limit` record.
+  let q = getRef('users').orderByKey().limitToFirst(Number(limit));
+  if (cursor) q = q.startAt(cursor);
+  const snap = await q.once('value');
+  const chunk = snap.val() || {};
+  const keys = Object.keys(chunk).sort();
 
   const report = {
-    total: valid.length,
-    startedAt: start,
+    keysInChunk: keys.length,
     processedThisRun: 0,
     changed: 0,
     details: [],
-    cursor: start,
+    cursor: cursor,
+    hasMore: keys.length >= Number(limit),
     finished: false,
     nextHint: null,
   };
 
-  const deadline = Date.now() + maxSeconds * 1000;
+  // queue bersama, concurrency worker
   let i = 0;
-
-  // pool: tiap worker ambil key dari slice (atomic via ++), checkpoint cursor
-  // disimpan SETELAH batch kecil biar progres tidak banyak yang hilang saat 524.
-  const workers = Array.from({ length: Math.min(concurrency, slice.length) }, async () => {
-    while (i < slice.length && Date.now() < deadline) {
-      const idx = i++;
-      const key = slice[idx];
+  const workers = Array.from({ length: Math.min(concurrency, keys.length) }, async () => {
+    while (i < keys.length) {
+      const key = keys[i++];
       try {
         const patch = await processUser(key);
         report.processedThisRun++;
@@ -92,29 +85,24 @@ async function backfillUsers({ maxSeconds = 180, limit = 0, concurrency = 10 } =
           if (report.details.length < 100) report.details.push({ apikey: key, fields: Object.keys(patch) });
         }
       } catch (_) {
-        // key gagal: tetap lanjut (field kosong bukan blocker), tidak dicekpoint
-      }
-      // checkpoint tiap 50 key — kalau function mati, max 50 x concurrency hilang
-      if (report.processedThisRun % 50 === 0) {
-        await store.setPath(CURSOR_PATH, start + report.processedThisRun);
-        report.cursor = start + report.processedThisRun;
+        // skip, invocation berikutnya diulang (idempotent)
       }
     }
   });
   await Promise.all(workers);
 
-  const advanced = report.processedThisRun;
-  await store.setPath(CURSOR_PATH, start + advanced);
-  report.cursor = start + advanced;
-  report.finished = start + advanced >= valid.length;
-  if (!report.finished) {
-    report.nextHint = `cursor=${start + advanced}/${valid.length} — jalankan lagi /cron/backfill-users`;
-  }
+  // cursor = key terakhir di chunk; key yang gagal tetap diulang
+  // (field-nya masih kosong → idempotent)
+  const lastKey = keys.length ? keys[keys.length - 1] : cursor;
+  if (keys.length) await store.setPath(CURSOR_PATH, lastKey);
+  report.cursor = lastKey;
+  report.finished = !report.hasMore;
+  if (!report.finished) report.nextHint = 'ada lagi — jalankan ulang /cron/backfill-users (cursor tersimpan)';
   return report;
 }
 
 async function resetCursor() {
-  await store.setPath(CURSOR_PATH, 0);
+  await store.setPath(CURSOR_PATH, null);
   return true;
 }
 

@@ -128,6 +128,13 @@ module.exports = {
     return u || null;
   },
 
+  /* Ref admin Firebase (untuk query ter-chunk di backfill). Ga ada di
+     mode memory — backfill harus jalan di firebase. */
+  getAdminRefForBackfill() {
+    if (MODE !== 'firebase') return null;
+    return (p) => getAdminDb().ref(String(p));
+  },
+
   async saveUser(apikey, obj) { await fire.set(`users/${encodeURIComponent(String(apikey).trim())}`, obj); },
   async patchUser(apikey, partial) { await fire.patch(`users/${encodeURIComponent(String(apikey).trim())}`, partial); },
 

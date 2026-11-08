@@ -310,10 +310,11 @@ function buildRouter() {
     const { backfillUsers, resetCursor } = require('./legacy/backfill');
     const action = String(req.query.action || 'run');
     if (action === 'probe') {
-      const t0 = Date.now();
-      const keys = await store.getApikeySet();
-      const n = Object.values(keys).filter((v) => v === true || v === 'true').length;
-      return res.json({ ok: true, data: { apikeys: n, ms: Date.now() - t0 } });
+      const cursor = (await store.getPath('meta/backfill_users_cursor')) || '';
+      const getRef = store.getAdminRefForBackfill();
+      const snap = await getRef('users').orderByKey().limitToFirst(1).once('value');
+      const hasUsers = Boolean(snap.val() && Object.keys(snap.val()).length);
+      return res.json({ ok: true, data: { cursor, hasUsers, mode: store.MODE } });
     }
     if (action === 'reset') {
       await resetCursor();
