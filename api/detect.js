@@ -309,13 +309,20 @@ function buildRouter() {
     }
     const { backfillUsers, resetCursor } = require('./legacy/backfill');
     const action = String(req.query.action || 'run');
+    if (action === 'probe') {
+      const t0 = Date.now();
+      const keys = await store.getApikeySet();
+      const n = Object.values(keys).filter((v) => v === true || v === 'true').length;
+      return res.json({ ok: true, data: { apikeys: n, ms: Date.now() - t0 } });
+    }
     if (action === 'reset') {
       await resetCursor();
       return res.json({ ok: true, data: { message: 'cursor balik ke 0, backfill dari awal' } });
     }
     const maxSeconds = Math.min(280, Math.max(10, Number(req.query.max_seconds) || 180));
     const limit = Math.max(0, Number(req.query.limit) || 0); // 0 = semua sisanya
-    const report = await backfillUsers({ maxSeconds, limit });
+    const concurrency = Math.min(30, Math.max(1, Number(req.query.concurrency) || 10));
+    const report = await backfillUsers({ maxSeconds, limit, concurrency });
     res.json({ ok: true, data: report });
   });
 
