@@ -33,6 +33,7 @@ function neededPatch(u) {
   if (!u.name && u.email) patch.name = String(u.email).split('@')[0].slice(0, 60);
   if (!u.created_at) patch.__need_created_at__ = true;
   if (u.telegram_id && !u.telegram) patch.telegram = u.telegram_id;
+  if (u.verified === true && !u.verified_at) patch.verified_at = u.created_at || new Date().toISOString();
   return patch;
 }
 

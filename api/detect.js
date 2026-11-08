@@ -106,12 +106,25 @@ async function matchPayment({ provider, providerTransactionId, amount, occurredA
     const expires = new Date(p.expires_at || created + 10 * 60 * 1000).getTime();
     if (now < created || now > expires) continue;
 
+    // kreditkan saldo user — final_saldo = saldo sebelum + saldo_added
+    let saldoBefore = 0;
+    let finalSaldo = p.amount;
+    if (p.apikey) {
+      try {
+        const u = (await store.getUser(p.apikey)) || {};
+        saldoBefore = Number(u.saldo) || 0;
+        finalSaldo = saldoBefore + p.amount;
+        await store.patchUser(p.apikey, { saldo: finalSaldo });
+      } catch (_) { /* saldo best-effort, jangan matikan matching */ }
+    }
+
     const patch = {
       status: 'paid', credited: true, paid_at: occurredAt.toISOString(),
       payment_method: provider, sender_name: raw?.sender_name || null,
       bank_code: raw?.bank_code || null,
       provider_transaction_id: providerTransactionId,
       saldo_added: p.amount,
+      final_saldo: finalSaldo,
     };
     await store.patchPayment(p.idtrx, patch);
     await store.delReservation(p.amount);

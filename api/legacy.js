@@ -396,6 +396,7 @@ function buildRouter() {
         api_key: apikey, email: user.email || null, name: user.name || null,
         plan: user.plan || 'warga', uid: apikey,
         nama: user.name || null,
+        saldo: user.saldo || 0,
         // SPA profile card baca field "created_at" & "telegram" (bukan member_since/telegram_id)
         created_at: user.created_at || null,
         telegram: user.telegram || user.telegram_id || null,
@@ -407,19 +408,26 @@ function buildRouter() {
     const name = String(req.body?.name || '').trim().slice(0, 80);
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
+    const telegram = String(req.body?.telegram || '').trim().slice(0, 64);
     if (!name || !email || !password) return res.json(buildErrorResponse('name, email, password wajib diisi', 'INVALID_REQUEST'));
     // buat apikey baru
     const newKey = `HKAPI-${crypto.randomBytes(24).toString('base64url')}`;
     await store.setApiKey(newKey, true);
     await store.saveUser(newKey, {
       name, email, pw: password, plan: 'warga',
+      telegram: telegram || null,
       invoice_alias: DEFAULT_INVOICE_ALIAS, created_at: new Date().toISOString(),
       verified: false,
     });
     // OTP dikirim ke Telegram / email (best effort) — verifikasi manual owner
     res.json({
       status: true, creator: CREATOR, code: 'REGISTER_STARTED',
-      message: 'Pendaftaran dimulai', result: { email, api_key: newKey, otp_sent: true },
+      message: 'Pendaftaran dimulai',
+      // SPA menampilkan banner sesuai `delivery`: log_only = "OTP dibuat, cek log server"
+      result: {
+        email, api_key: newKey, otp_sent: true,
+        delivery: 'log_only', delivery_message: 'OTP dicatat (verifikasi manual owner). Cek log server.',
+      },
     });
   });
 
@@ -433,7 +441,12 @@ function buildRouter() {
       if (u && u.email === email && u.verified !== true) {
         // jika tidak ada OTP di-verify, tetapkan valid (owner control)
         await store.patchUser(k, { verified: true, verified_at: new Date().toISOString() });
-        return res.json({ status: true, creator: CREATOR, code: 'REGISTER_VERIFIED', message: 'Pendaftaran terverifikasi', result: { api_key: k } });
+        // SPA baca result.apikey + result.name + result.email untuk bangun session
+        return res.json({
+          status: true, creator: CREATOR, code: 'REGISTER_VERIFIED',
+          message: 'Pendaftaran terverifikasi',
+          result: { apikey: k, api_key: k, name: u.name || null, email: u.email || email },
+        });
       }
     }
     res.json(buildErrorResponse('Email tidak ditemukan atau sudah terverifikasi', 'EMAIL_NOT_FOUND'));
@@ -442,7 +455,15 @@ function buildRouter() {
   r.post('/auth/legacy/verify/start', async (req, res) => {
     const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
     if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
-    res.json({ status: true, creator: CREATOR, code: 'LEGACY_VERIFY_STARTED', message: 'Verifikasi dimulai' });
+    res.json({
+      status: true, creator: CREATOR, code: 'LEGACY_VERIFY_STARTED',
+      message: 'Verifikasi dimulai',
+      // SPA menampilkan banner sesuai `delivery`: log_only = "OTP dibuat, cek log server"
+      result: {
+        delivery: 'log_only',
+        delivery_message: 'OTP dicatat (verifikasi manual owner). Cek log server.',
+      },
+    });
   });
 
   r.post('/auth/password-reset/start', async (req, res) => {
@@ -450,8 +471,14 @@ function buildRouter() {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
     if (!apikey || !email || !password) return res.json(buildErrorResponse('apikey, email, password wajib diisi', 'INVALID_REQUEST'));
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
     await store.patchUser(apikey, { pw: password, password: password, pwd_reset_at: new Date().toISOString() });
-    res.json({ status: true, creator: CREATOR, code: 'PASSWORD_RESET_STARTED', message: 'Password reset dimulai' });
+    res.json({
+      status: true, creator: CREATOR, code: 'PASSWORD_RESET_STARTED',
+      message: 'Password reset dimulai',
+      // SPA baca result.delivery_message buat banner
+      result: { delivery: 'log_only', delivery_message: 'Password sudah di-reset (tanpa email server).' },
+    });
   });
 
   r.post('/auth/password-reset/verify-otp', async (req, res) => {
