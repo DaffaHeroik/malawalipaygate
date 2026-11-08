@@ -60,7 +60,7 @@ function buildApp() {
       req.path.startsWith('/qris') || req.path.startsWith('/user') ||
       req.path.startsWith('/withdraw') || req.path.startsWith('/webhook') ||
       req.path.startsWith('/cron') || req.path.startsWith('/api') ||
-      req.path.startsWith('/health')
+      req.path.startsWith('/health') || req.path.startsWith('/stats')
     ) {
       return next();
     }

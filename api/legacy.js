@@ -293,9 +293,10 @@ function buildRouter() {
       return res.json({ status: true, creator: CREATOR, code: 'PAYMENT_ALREADY_SETTLED', message: `Transaksi sudah ${p.status}, tidak bisa dibatalkan` });
     }
     const nowIso = new Date().toISOString();
-    await store.patchPayment(idtrx, { status: 'cancelled', cancelled_at: nowIso, deleted_at: nowIso, deleted_by: 'user' });
+    await store.patchPayment(idtrx, { status: 'cancelled', cancelled_at: nowIso, deleted_at: nowIso, deleted_by: 'user', stats_recorded: true });
     await store.delReservation(p.amount);
     try { const ids = ((await store.getPendingByApikey(apikey)) || []).filter((x) => x !== idtrx); await store.setPendingByApikey(apikey, ids); } catch (_) {}
+    try { const stats = require('./legacy/stats'); await stats.recordTerminal({ ...p, status: 'cancelled' }); } catch (_) { /* stats best-effort */ }
     await store.log('deletions', { apikey_prefix: apikey.substring(0, 8), idtrx, deleted_at: nowIso });
     res.json({ status: true, creator: CREATOR, code: 'PAYMENT_CANCELLED', message: 'Transaksi dibatalkan' });
   };

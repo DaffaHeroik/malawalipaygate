@@ -128,6 +128,17 @@ async function matchPayment({ provider, providerTransactionId, amount, occurredA
     };
     await store.patchPayment(p.idtrx, patch);
     await store.delReservation(p.amount);
+    // catat ke agregat bulanan admin SEBELUM data buyer bisa di-prune
+    try {
+      const stats = require('./legacy/stats');
+      await stats.recordTerminal({
+        idtrx: p.idtrx, apikey: p.apikey, created_at: p.created_at,
+        status: 'paid', amount: p.amount, base_amount: p.base_amount,
+        unique_fee: p.unique_fee, actual_fee_admin: p.actual_fee_admin,
+        pay_provider: provider,
+      });
+      await store.patchPayment(p.idtrx, { stats_recorded: true });
+    } catch (_) { /* stats best-effort, jangan matikan matching */ }
     // buang dari index pending per-apikey (kalau APIKEY-nya dikenal)
     if (p.apikey) {
       try {
@@ -294,8 +305,9 @@ function buildRouter() {
       if (!p || p.status !== 'pending') continue;
       const exp = new Date(p.expires_at || p.created_at || 0).getTime();
       if (exp && exp < now.getTime()) {
-        await store.patchPayment(p.idtrx, { status: 'expired', expired_at: now.toISOString() });
+        await store.patchPayment(p.idtrx, { status: 'expired', expired_at: now.toISOString(), stats_recorded: true });
         await store.delReservation(p.amount);
+        try { const stats = require('./legacy/stats'); await stats.recordTerminal(p); } catch (_) { /* best-effort */ }
         if (p.apikey) {
           try {
             const ids = ((await store.getPendingByApikey(p.apikey)) || []).filter((x) => x !== p.idtrx);
@@ -365,6 +377,47 @@ function buildRouter() {
     const concurrency = Math.min(50, Math.max(1, Number(req.query.concurrency) || 25));
     const report = await backfillUsers({ limit, concurrency });
     res.json({ ok: true, data: report });
+  });
+
+  /* ── /cron/retention — retensi 30 hari buyer + agregat profit bulanan admin.
+     Auth sama dengan /cron/detect (secret = LEGACY_WEBHOOK_SECRET).
+       ?action=migrate (sekali jalan, chunked): record stats semua record lama
+       yang belum ber-flag + agregasi riwayat withdraws lama
+       ?action=run   (repetitif, tiap hari): hapus payments/withdraws terminal
+       yang >30 hari (sudah di-guarantee tercatat stats lebih dulu) */
+  r.get('/cron/retention', async (req, res) => {
+    const secret = String(req.query.secret || req.get('x-cron-secret') || '');
+    if (!WEBHOOK_SECRET) {
+      return res.status(503).json({ ok: false, error: { code: 'not_configured', message: 'LEGACY_WEBHOOK_SECRET belum di-set.' } });
+    }
+    if (!safeEqual(secret, WEBHOOK_SECRET)) {
+      return res.status(401).json({ ok: false, error: { code: 'unauthorized', message: 'Secret salah.' } });
+    }
+    const action = String(req.query.action || 'run');
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 500));
+    const { migrateStats, prunePayments, pruneWithdraws } = require('./legacy/retention');
+    if (action === 'migrate') {
+      const report = await migrateStats({ limit });
+      return res.json({ ok: true, data: report });
+    }
+    const [pays, wds] = await Promise.all([prunePayments({ limit }), pruneWithdraws({ limit: 200 })]);
+    res.json({ ok: true, data: { payments: pays, withdraws: wds } });
+  });
+
+  /* ── /stats/months — baca agregat profit bulanan admin (semua bulan).
+     Auth sama dengan /cron/detect. ?month=YYYY-MM buat satu bulan saja. */
+  r.get('/stats/months', async (req, res) => {
+    const secret = String(req.query.secret || req.get('x-cron-secret') || '');
+    if (!WEBHOOK_SECRET) {
+      return res.status(503).json({ ok: false, error: { code: 'not_configured', message: 'LEGACY_WEBHOOK_SECRET belum di-set.' } });
+    }
+    if (!safeEqual(secret, WEBHOOK_SECRET)) {
+      return res.status(401).json({ ok: false, error: { code: 'unauthorized', message: 'Secret salah.' } });
+    }
+    const { getMonthStats, getMonthStatsOne } = require('./legacy/stats');
+    const month = String(req.query.month || '').trim();
+    const data = month ? await getMonthStatsOne(month) : await getMonthStats();
+    res.json({ ok: true, data: data || (month ? null : {}) });
   });
 
   return r;

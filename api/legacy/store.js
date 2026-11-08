@@ -128,11 +128,32 @@ module.exports = {
     return u || null;
   },
 
-  /* Ref admin Firebase (untuk query ter-chunk di backfill). Ga ada di
-     mode memory — backfill harus jalan di firebase. */
+  /* Ref admin Firebase (untuk query ter-chunk di backfill/retention).
+     Mode memory → wrapper query ringan di atas memori (orderByKey+limit
+     +startAt) supaya logic chunked sama di dua mode. */
   getAdminRefForBackfill() {
-    if (MODE !== 'firebase') return null;
-    return (p) => getAdminDb().ref(String(p));
+    if (MODE === 'firebase') return (p) => getAdminDb().ref(String(p));
+    // memory: chunk sederhana — ambil semua key, slice sesuai cursor
+    return (p) => ({
+      orderByKey: () => this._memChunk(p),
+    });
+  },
+  _memChunk(path) {
+    let obj = pathGet(mem, String(path).split('/'));
+    obj = obj && typeof obj === 'object' ? obj : {};
+    const keys = Object.keys(obj).sort();
+    return {
+      startAt(from) { this._memFrom = from; return this; },
+      limitToFirst(n) { this._memLimit = n; return this; },
+      once() {
+        const from = this._memFrom || '';
+        const lim = this._memLimit || keys.length;
+        const slice = keys.filter((k) => (from ? k >= from : true)).slice(0, lim);
+        const sub = {};
+        for (const k of slice) sub[k] = obj[k];
+        return Promise.resolve({ val: () => sub });
+      },
+    };
   },
 
   async saveUser(apikey, obj) { await fire.set(`users/${encodeURIComponent(String(apikey).trim())}`, obj); },
@@ -146,6 +167,10 @@ module.exports = {
   },
   async savePayment(idtrx, obj) { await fire.set(`payments/${encodeURIComponent(String(idtrx).trim())}`, obj); },
   async patchPayment(idtrx, partial) { await fire.patch(`payments/${encodeURIComponent(String(idtrx).trim())}`, partial); },
+  /* Hapus record payment (retensi 30 hari) — juga buang dari index pending. */
+  async removePayment(idtrx) {
+    await fire.set(`payments/${encodeURIComponent(String(idtrx).trim())}`, null);
+  },
   async allPayments() {
     const c = await fire.collection('payments');
     const out = {};
@@ -262,5 +287,23 @@ module.exports = {
     const c = Number(await fire.get(`meta/counter_${kind}`)) || 0;
     await fire.set(`logs/${kind}/${c}`, obj);
     await fire.set(`meta/counter_${kind}`, c + 1);
+  },
+
+  /* Agregat bulanan admin (meta/stats/months/{YYYY-MM}).
+   * updateMonthStats: read-modify-write ATOMIK di node bulan itu.
+   *   - firebase : .transaction() — dua invocation Vercel yang nulis
+   *     bulan sama akan di-serialize RTDB (yang lambat re-run fn dgn value baru).
+   *   - memory   : read-then-write langsung.
+   * fn(current) → new value (current bisa null). */
+  async updateMonthStats(monthKey, fn) {
+    const p = `meta/stats/months/${String(monthKey)}`;
+    if (MODE === 'memory') {
+      const curV = await fire.get(p);
+      const next = fn(curV && typeof curV === 'object' ? curV : null) ?? null;
+      await fire.set(p, next);
+      return next;
+    }
+    const ref = getAdminDb().ref(p);
+    return ref.transaction(async (cur) => fn(cur && typeof cur === 'object' ? cur : null));
   },
 };
