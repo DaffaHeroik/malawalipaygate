@@ -331,6 +331,23 @@ function buildRouter() {
       await resetCursor();
       return res.json({ ok: true, data: { message: 'cursor balik ke 0, backfill dari awal' } });
     }
+    if (action === 'set') {
+      // set field spesifik user (whitelist — bukan input bebas):
+      // ?apikey=KEY&telegram=123456  (kosongin: ?telegram=)
+      const apikey = String(req.query.apikey || '').trim();
+      const tg = String(req.query.telegram ?? '').trim();
+      if (!/^[A-Za-z0-9._-]{1,100}$/.test(apikey)) {
+        return res.status(400).json({ ok: false, error: { code: 'invalid_apikey', message: 'apikey invalid.' } });
+      }
+      if (!(await store.verifyApiKey(apikey))) {
+        return res.status(404).json({ ok: false, error: { code: 'not_found', message: 'apikey tidak terdaftar.' } });
+      }
+      const partial = {};
+      if (req.query.telegram !== undefined) partial.telegram = tg || null;
+      if (Object.keys(partial).length) await store.patchUser(apikey, partial);
+      const u = (await store.getUser(apikey)) || {};
+      return res.json({ ok: true, data: { apikey, telegram: u.telegram || null } });
+    }
     const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 300));
     const concurrency = Math.min(50, Math.max(1, Number(req.query.concurrency) || 25));
     const report = await backfillUsers({ limit, concurrency });
