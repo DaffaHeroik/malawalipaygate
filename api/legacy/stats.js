@@ -16,9 +16,8 @@
  *     by_user:     { APIKEY: {count, amount, profit}, ... }
  *   }
  *
- * Idempotent-per-payment: caller (detect/retention) set flag
- * `stats_recorded: true` di record payment saat pertama tercatat;
- * prune hanya mencatat ulang untuk record lama yang belum ber-flag.
+ * Idempotent-per-payment: flag `stats_recorded` di record payment;
+ * tulis agregat + flag ATOMIK (satu ref().multi(), all-or-nothing).
  */
 
 const store = require('./store');
@@ -30,39 +29,59 @@ function monthKeyOf(iso) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-/* Catat satu payment yang baru jadi terminal state (paid/expired/cancelled/deleted).
-   Dipakai di path live (detect, delete) — record WAJIB sudah di-patch
-   status + stats_recorded oleh caller. */
-async function recordTerminal(payment) {
+/* Mutasi murni agregat bulan (tidak I/O) — dipakai recordTerminal
+   dan batch migration. p = record payment (status terminal). */
+function incrementStats(s, p) {
+  const status = String(p.status || 'unknown');
+  const provider = String(p.pay_provider || p.payment_method || 'unknown');
+  s.transactions = (s.transactions || 0) + 1;
+  s.status = s.status || {};
+  s.status[status] = (s.status[status] || 0) + 1;
+  if (status === 'paid') {
+    const amt = Number(p.amount) || 0;
+    const profit = (Number(p.unique_fee) || 0) + (Number(p.actual_fee_admin) || 0);
+    s.paid_amount = (s.paid_amount || 0) + amt;
+    s.profit = (s.profit || 0) + profit;
+    s.by_provider = s.by_provider || {};
+    const bp = (s.by_provider[provider] = s.by_provider[provider] || { count: 0, amount: 0, profit: 0 });
+    bp.count += 1; bp.amount += amt; bp.profit += profit;
+    if (p.apikey) {
+      s.by_user = s.by_user || {};
+      const bu = (s.by_user[p.apikey] = s.by_user[p.apikey] || { count: 0, amount: 0, profit: 0 });
+      bu.count += 1; bu.amount += amt; bu.profit += profit;
+    }
+  }
+  return s;
+}
+
+/* Catat satu payment terminal. atomically=true → flag stats_recorded
+   ikut ter-apply dalam satu ref().multi() bareng agregat (all-or-nothing:
+   crash = dua-duanya belum ter-apply → invocation berikutnya aman
+   re-record, tak double-count). */
+async function recordTerminal(payment, { atomically = false } = {}) {
   if (!payment || !payment.created_at) return;
   const m = monthKeyOf(payment.created_at);
   if (!m) return;
 
-  const status = String(payment.status || 'unknown');
-  const provider = String(payment.pay_provider || payment.payment_method || 'unknown');
-  const amt = status === 'paid' ? Number(payment.amount) || 0 : 0;
-  const profit = status === 'paid' ? (Number(payment.unique_fee) || 0) + (Number(payment.actual_fee_admin) || 0) : 0;
-  const apikey = payment.apikey || null;
+  const extra = atomically && payment.idtrx
+    ? { [`payments/${encodeURIComponent(String(payment.idtrx).trim())}/stats_recorded`]: true }
+    : null;
 
-  await store.updateMonthStats(m, (cur) => {
+  await store.updateMonthStats(m, (cur) => incrementStats(cur && typeof cur === 'object' ? { ...cur } : {}, payment), extra);
+}
+
+/* Batch: N record sekaligus, 1 read + 1 multi-write per bulan.
+   `flagsPerMonth` (opsional) = { 'YYYY-MM': { 'payments/X/stats_recorded': true } }
+   — flag per-bulan di-apply ATOMIK bareng bulan itu sendiri (all-or-nothing).
+   months: { 'YYYY-MM': [p1, p2, ...] } */
+async function recordBatch(months, flagsPerMonth = null) {
+  for (const [m, pays] of Object.entries(months || {})) {
+    if (!pays || !pays.length) continue;
+    const cur = (await store.getPath(`meta/stats/months/${m}`)) || {};
     const s = cur && typeof cur === 'object' ? { ...cur } : {};
-    s.transactions = (s.transactions || 0) + 1;
-    s.status = s.status || {};
-    s.status[status] = (s.status[status] || 0) + 1;
-    if (status === 'paid') {
-      s.paid_amount = (s.paid_amount || 0) + amt;
-      s.profit = (s.profit || 0) + profit;
-      s.by_provider = s.by_provider || {};
-      const bp = (s.by_provider[provider] = s.by_provider[provider] || { count: 0, amount: 0, profit: 0 });
-      bp.count += 1; bp.amount += amt; bp.profit += profit;
-      if (apikey) {
-        s.by_user = s.by_user || {};
-        const bu = (s.by_user[apikey] = s.by_user[apikey] || { count: 0, amount: 0, profit: 0 });
-        bu.count += 1; bu.amount += amt; bu.profit += profit;
-      }
-    }
-    return s;
-  });
+    for (const p of pays) incrementStats(s, p);
+    await store.multiSet({ [`meta/stats/months/${m}`]: s, ...((flagsPerMonth && flagsPerMonth[m]) || {}) });
+  }
 }
 
 /* Baca semua agregat bulanan (meta/stats/months). */
@@ -76,4 +95,4 @@ async function getMonthStatsOne(monthKey) {
   return all[monthKey] || null;
 }
 
-module.exports = { monthKeyOf, recordTerminal, getMonthStats, getMonthStatsOne };
+module.exports = { monthKeyOf, incrementStats, recordTerminal, recordBatch, getMonthStats, getMonthStatsOne };

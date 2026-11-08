@@ -128,16 +128,13 @@ async function matchPayment({ provider, providerTransactionId, amount, occurredA
     };
     await store.patchPayment(p.idtrx, patch);
     await store.delReservation(p.amount);
-    // catat ke agregat bulanan admin SEBELUM data buyer bisa di-prune
+    // catat ke agregat bulanan admin SEBELUM data buyer bisa di-prune.
+    // atomically: agregat bulan + flag stats_recorded ditulis ATOMIK
+    // (ref().multi) — crash = dua-duanya belum ke-apply, aman re-record
+    // tanpa double-count.
     try {
       const stats = require('./legacy/stats');
-      await stats.recordTerminal({
-        idtrx: p.idtrx, apikey: p.apikey, created_at: p.created_at,
-        status: 'paid', amount: p.amount, base_amount: p.base_amount,
-        unique_fee: p.unique_fee, actual_fee_admin: p.actual_fee_admin,
-        pay_provider: provider,
-      });
-      await store.patchPayment(p.idtrx, { stats_recorded: true });
+      await stats.recordTerminal({ ...p, ...patch, status: 'paid' }, { atomically: true });
     } catch (_) { /* stats best-effort, jangan matikan matching */ }
     // buang dari index pending per-apikey (kalau APIKEY-nya dikenal)
     if (p.apikey) {
@@ -397,7 +394,11 @@ function buildRouter() {
     const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 500));
     const { migrateStats, prunePayments, pruneWithdraws } = require('./legacy/retention');
     if (action === 'migrate') {
-      const report = await migrateStats({ limit });
+      const report = await migrateStats({
+        limit,
+        force: req.query.force === '1' || req.query.force === 'true',
+        wipe: req.query.wipe === '1' || req.query.wipe === 'true',
+      });
       return res.json({ ok: true, data: report });
     }
     const [pays, wds] = await Promise.all([prunePayments({ limit }), pruneWithdraws({ limit: 200 })]);

@@ -290,20 +290,38 @@ module.exports = {
   },
 
   /* Agregat bulanan admin (meta/stats/months/{YYYY-MM}).
-   * updateMonthStats: read-modify-write ATOMIK di node bulan itu.
-   *   - firebase : .transaction() — dua invocation Vercel yang nulis
-   *     bulan sama akan di-serialize RTDB (yang lambat re-run fn dgn value baru).
-   *   - memory   : read-then-write langsung.
-   * fn(current) → new value (current bisa null). */
-  async updateMonthStats(monthKey, fn) {
+   * fn(current) → new value. `extra` (opsional) = path root-→value
+   * tambahan yang ikut ter-apply ATOMIK di server (mis. flag
+   * stats_recorded di record payment).
+   * - firebase : ref().multi({ pathBulan: next, ...extra })
+   *   — read-then-write + atomic batch. Crash di tengah = dua-duanya
+   *   belum ter-apply → migration ulang aman, TIDAK double-count.
+   * - memory   : set berurutan. */
+  async updateMonthStats(monthKey, fn, extra = null) {
     const p = `meta/stats/months/${String(monthKey)}`;
     if (MODE === 'memory') {
       const curV = await fire.get(p);
       const next = fn(curV && typeof curV === 'object' ? curV : null) ?? null;
       await fire.set(p, next);
+      if (extra) for (const [ep, ev] of Object.entries(extra)) await fire.set(ep, ev);
       return next;
     }
-    const ref = getAdminDb().ref(p);
-    return ref.transaction(async (cur) => fn(cur && typeof cur === 'object' ? cur : null));
+    const curV = await fire.get(p); // read terakhir (nilai bulan)
+    const next = fn(curV && typeof curV === 'object' ? curV : null) ?? null;
+    const ops = { [p]: next };
+    if (extra) Object.assign(ops, extra);
+    await this.multiSet(ops); // ATOMIK di server (ref().multi)
+    return next;
+  },
+
+  /* Satu update atomik multi-path — atomik di server: semua ops
+   * ter-apply atau tidak ada yang ter-apply. `ops` = { 'path/a': v, ... } */
+  async multiSet(ops) {
+    if (!ops || !Object.keys(ops).length) return;
+    if (MODE === 'memory') {
+      for (const [p, v] of Object.entries(ops)) await fire.set(p, v);
+      return;
+    }
+    await getAdminDb().ref().multi(ops);
   },
 };

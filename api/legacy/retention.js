@@ -4,16 +4,20 @@
  * Retensi 30 hari (buyer) + agregat profit bulanan (admin).
  *
  * Prinsip: angka admin (meta/stats/months) TIDAK pernah dihapus —
- * data buyer (payments/withdraws) yang di-prune. Jadi sebelum hapus,
- * record yang belum tercatat pasti di-record dulu (flag stats_recorded).
+ * data buyer (payments/withdraws) yang di-prune. Sebelum hapus, record
+ * yang belum tercatat WAJIB di-record dulu. Tulis agregat + flag
+ * ATOMIK (satu ref().multi, all-or-nothing) → crash = aman re-record.
  *
- * Dua mode (endpoint /cron/retention?secret=):
- *  - action=migrate : satu kali — record ulang SEMUA record lama yang
- *    belum ber-flag (chunked, cursor meta/retention_stats_cursor) +
- *    agregasi riwayat withdraws lama (flag meta/withdraws_stats_done).
- *  - action=run     : repetitif — hapus record terminal >30 hari
- *    (cursor meta/retention_prune_cursor) + prune list withdraws >30 hari
- *    (cursor meta/retention_withdraws_cursor).
+ * Endpoint /cron/retention?secret=
+ *   action=migrate (chunked, cursor meta/retention_stats_cursor):
+ *     - record semua record lama terminal yang belum ber-flag
+ *       (batch per bulan: 1 read + 1 multi-write per bulan — cepat)
+ *     - &force=1 : mulai ulang dari awal + ulang record ber-flag
+ *       (rebuild agregat dari nol — set dulu meta/stats/months=null)
+ *     - &wipe=1  : set meta/stats/months=null diawal (reset agregat)
+ *     - agregasi riwayat withdraws (flag meta/withdraws_stats_done)
+ *   action=run (repetitif, cursor terpisah): hapus record terminal
+ *     >30 hari (record dulu, atomik) + prune list withdraws >30 hari.
  */
 
 const store = require('./store');
@@ -33,42 +37,70 @@ function isOld(p, cutoffMs) {
   return Number.isFinite(t) && t < cutoffMs;
 }
 
+function groupByMonth(pays) {
+  const byMonth = {};
+  for (const p of pays) {
+    if (!p.created_at) continue;
+    const m = stats.monthKeyOf(p.created_at);
+    if (!m) continue;
+    (byMonth[m] = byMonth[m] || []).push(p);
+  }
+  return byMonth;
+}
+
 /* ── action=migrate ─────────────────────────────────────────────── */
 
-async function migrateStats({ limit = 500 } = {}) {
+async function migrateStats({ limit = 500, force = false, wipe = false } = {}) {
   const getRef = store.getAdminRefForBackfill();
   if (!getRef) throw new Error('migrate butuh mode firebase');
 
-  const report = { scanned: 0, recorded: 0, cursor: null, hasMore: true, finished: false };
+  const report = { scanned: 0, recorded: 0, cursor: null, hasMore: true, finished: false, force };
 
-  const cursor = (await store.getPath('meta/retention_stats_cursor')) || '';
+  if (wipe) {
+    await store.setPath('meta/stats/months', null);
+    if (force) await store.setPath('meta/withdraws_stats_done', null);
+    report.wiped = true;
+  }
+
+  const cursor = force ? '' : ((await store.getPath('meta/retention_stats_cursor')) || '');
   let q = getRef('payments').orderByKey().limitToFirst(Number(limit));
   if (cursor) q = q.startAt(cursor);
   const snap = await q.once('value');
   const chunk = snap.val() || {};
   const keys = Object.keys(chunk);
 
-  let i = 0;
-  const workers = Array.from({ length: Math.min(10, keys.length) }, async () => {
-    while (i < keys.length) {
-      const key = keys[i++];
-      if (key.startsWith('__')) continue; // __pending_by_apikey__, __amount_reservations__
-      const p = chunk[key];
-      if (!p || !p.idtrx || !isTerminal(p) || p.stats_recorded) continue;
-      try {
-        await stats.recordTerminal(p);
-        await store.patchPayment(key, { stats_recorded: true });
-        report.recorded++;
-      } catch (_) { /* lanjut; invocation berikutnya ulang (idempotent) */ }
-      report.scanned++;
-    }
-  });
-  await Promise.all(workers);
+  // kumpulkan record target per bulan → 1 write batch per bulan
+  const byMonth = {};
+  let targetCount = 0;
+  for (const key of keys) {
+    if (key.startsWith('__')) continue; // index, bukan record
+    const p = chunk[key];
+    if (!p || !p.idtrx || !isTerminal(p)) continue;
+    if (!force && p.stats_recorded) continue; // sudah tercatat (non-force)
+    report.scanned++;
+    const m = stats.monthKeyOf(p.created_at);
+    if (!m) continue;
+    (byMonth[m] = byMonth[m] || []).push(p);
+    targetCount++;
+  }
+
+  // flags per-bulan: record + flag ATOMIK dalam multi-write bulan itu
+  const flagsPerMonth = {};
+  for (const [m, list] of Object.entries(byMonth)) {
+    flagsPerMonth[m] = {};
+    for (const p of list) flagsPerMonth[m][`payments/${encodeURIComponent(String(p.idtrx).trim())}/stats_recorded`] = true;
+  }
+
+  // batch: 1 read + 1 write per bulan, flags atomik
+  await stats.recordBatch(byMonth, flagsPerMonth);
+  report.recorded = targetCount;
+  report.recordedMonths = Object.keys(byMonth).length;
 
   report.cursor = keys.length ? keys[keys.length - 1] : cursor;
   report.hasMore = keys.length >= Number(limit);
   report.finished = !report.hasMore;
 
+  // cursor lanjut (bukan reset) kecuali force bikin awal baru
   if (keys.length) await store.setPath('meta/retention_stats_cursor', report.cursor);
 
   // agregasi riwayat withdraws lama (sekali jalan, flag)
@@ -76,27 +108,33 @@ async function migrateStats({ limit = 500 } = {}) {
   if (!wdone) {
     const allW = await store.getPath('withdraws');
     const wroot = allW && typeof allW === 'object' ? allW : {};
+    const wByMonth = {};
     for (const apikey of Object.keys(wroot)) {
       const items = Array.isArray(wroot[apikey]) ? wroot[apikey] : [];
       for (const it of items) {
         if (!it || !it.created_at) continue;
         const m = stats.monthKeyOf(it.created_at);
         if (!m) continue;
-        const amount = Number(it.nominal ?? it.total_potong ?? 0) || 0;
-        await store.updateMonthStats(m, (cur) => {
-          const s = (cur && typeof cur === 'object' ? { ...cur } : {}) || {};
-          s.withdrawals = {
-            count: (s.withdrawals?.count || 0) + 1,
-            amount: (s.withdrawals?.amount || 0) + amount,
-          };
-          return s;
-        });
+        (wByMonth[m] = wByMonth[m] || []).push({ created_at: it.created_at, nominal: it.nominal ?? it.total_potong ?? 0, apikey });
       }
+    }
+    // pakai path sendiri: agregasi withdraws
+    for (const [m, items] of Object.entries(wByMonth)) {
+      await store.updateMonthStats(m, (cur) => {
+        const s = (cur && typeof cur === 'object' ? { ...cur } : {});
+        s.withdrawals = s.withdrawals || { count: 0, amount: 0 };
+        for (const it of items) {
+          s.withdrawals.count += 1;
+          s.withdrawals.amount += Number(it.nominal ?? it.total_potong ?? 0) || 0;
+        }
+        return s;
+      });
     }
     await store.setPath('meta/withdraws_stats_done', new Date().toISOString());
     report.withdrawsAggregated = true;
+    report.withdrawsItems = Object.values(wByMonth).reduce((a, b) => a + b.length, 0);
   } else {
-    report.withdrawsAggregated = false; // sudah di-migration sebelumnya
+    report.withdrawsAggregated = false;
   }
 
   if (!report.finished) {
@@ -112,7 +150,7 @@ async function prunePayments({ limit = 500 } = {}) {
   if (!getRef) throw new Error('prune butuh mode firebase');
 
   const cutoffMs = Date.now() - RETENTION_DAYS * DAY_MS;
-  const report = { scanned: 0, deleted: 0, cursor: null, hasMore: true, finished: false };
+  const report = { scanned: 0, deleted: 0, recorded: 0, cursor: null, hasMore: true, finished: false };
 
   const cursor = (await store.getPath('meta/retention_prune_cursor')) || '';
   let q = getRef('payments').orderByKey().limitToFirst(Number(limit));
@@ -121,40 +159,45 @@ async function prunePayments({ limit = 500 } = {}) {
   const chunk = snap.val() || {};
   const keys = Object.keys(chunk);
 
+  // record dulu (batch per bulan, atomik) record terminal yang belum di-flag
+  const pendingRecord = [];
   for (const key of keys) {
     if (key.startsWith('__')) continue;
     const p = chunk[key];
     if (!p || !p.idtrx) continue;
     report.scanned++;
-    // record yang masih terminal-tapi-belum-dicatat: record dulu baru hapus
-    if (isTerminal(p) && !p.stats_recorded) {
-      try {
-        await stats.recordTerminal(p);
-        await store.patchPayment(key, { stats_recorded: true });
-      } catch (_) { /* gapapa, data stats lebih penting dari kecepatan prune */ }
-    }
+    if (isTerminal(p) && !p.stats_recorded) pendingRecord.push(p);
+  }
+  if (pendingRecord.length) {
+    const byMonth = groupByMonth(pendingRecord);
+    const flags = {};
+    for (const p of pendingRecord) flags[`payments/${encodeURIComponent(String(p.idtrx).trim())}/stats_recorded`] = true;
+    await stats.recordBatch(byMonth, flags);
+    report.recorded = pendingRecord.length;
+  }
+
+  // hapus record terminal >30 hari (yang sudah di-record)
+  for (const key of keys) {
+    if (key.startsWith('__')) continue;
+    const p = chunk[key];
+    if (!p || !p.idtrx) continue;
     if (isTerminal(p) && isOld(p, cutoffMs)) {
       await store.removePayment(key);
-      // bersihin dari index pending per-apikey (record lama biasanya udah dibuang,
-      // tapi amankan) — hanya kalau record itu masih pending index-nya
       if (p.apikey) {
         try {
           const ids = ((await store.getPendingByApikey(p.apikey)) || []).filter((x) => x !== key);
-          if (ids.length || true) await store.setPendingByApikey(p.apikey, ids);
+          await store.setPendingByApikey(p.apikey, ids);
         } catch (_) { /* best-effort */ }
       }
       report.deleted++;
     }
   }
 
-  // cursor: kunci terakhir yang BUKAN meta (chunk selalu memuat semua jenis
-  // kunci; iterasi lanjut dari sini, idempotent)
   const lastKey = keys.length ? keys[keys.length - 1] : cursor;
   report.hasMore = keys.length >= Number(limit);
   report.finished = !report.hasMore;
   if (report.finished) {
-    // loop ulang dari awal? TIDAK — kalau sudah selesai satu putaran,
-    // balik ke 0 supaya run berikutnya nge-prune record baru yang >30 hari.
+    // selesai satu putaran → balik ke 0 untuk putaran berikutnya
     await store.setPath('meta/retention_prune_cursor', '');
     report.cursor = '';
   } else {
@@ -203,14 +246,14 @@ async function pruneWithdraws({ limit = 200 } = {}) {
   return report;
 }
 
-/* catat satu item withdrawal baru ke agregat bulan (dipanggil writer
-   withdrawal ke depannya — sekarang belum ada, tapi layer-nya ready) */
+/* catat satu item withdrawal baru ke agregat bulan (layer siap,
+   dipanggil writer withdrawal ke depannya) */
 async function recordWithdraw(apikey, item) {
   const m = stats.monthKeyOf(item?.created_at || new Date().toISOString());
   if (!m) return;
   const amount = Number(item?.nominal ?? item?.total_potong ?? 0) || 0;
   await store.updateMonthStats(m, (cur) => {
-    const s = (cur && typeof cur === 'object' ? { ...cur } : {}) || {};
+    const s = (cur && typeof cur === 'object' ? { ...cur } : {});
     s.withdrawals = {
       count: (s.withdrawals?.count || 0) + 1,
       amount: (s.withdrawals?.amount || 0) + amount,
