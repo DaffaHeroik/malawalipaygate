@@ -31,14 +31,20 @@ const stats = require('/root/malawali-payment/api/legacy/stats');
   const wipeFirst = process.argv[2] === 'wipe';
   let chunk = 0;
   let totalRecorded = 0;
+  if (wipeFirst) {
+    // reset penuh: hapus agregat + kursor (mulai dari nol)
+    await store.setPath('meta/stats/months', null);
+    await store.setPath('meta/retention_stats_cursor', '');
+    await store.setPath('meta/withdraws_stats_done', null);
+    console.log('wiped: meta/stats/months, retention_stats_cursor, withdraws_stats_done');
+  }
   for (;;) {
     chunk++;
     const t0 = Date.now();
-    // force=true di SEMUA chunk (rebuild penuh dari nol — wipe sudah
-    // reset stats; flag lama dari migrasi live pertama harus di-abaikan)
+    // force=true di SEMUA chunk (re-record semua, angka rebuild)
     let r;
     try {
-      r = await retention.migrateStats({ limit: 500, force: true, wipe: wipeFirst && chunk === 1 });
+      r = await retention.migrateStats({ limit: 500, force: true });
     } catch (e) {
       console.log(`chunk ${chunk} gagal (${e.message}) — stop aman, jalankan ulang`);
       process.exit(2);

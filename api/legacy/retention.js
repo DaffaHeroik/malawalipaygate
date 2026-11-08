@@ -156,7 +156,7 @@ async function prunePayments({ limit = 500 } = {}) {
 
   const cursor = (await store.getPath('meta/retention_prune_cursor')) || '';
   let q = getRef('payments').orderByKey().limitToFirst(Number(limit));
-  if (cursor) q = q.startAt(cursor);
+  if (cursor) q = q.startAfter(cursor); // strict: jangan ulang record terakhir
   const snap = await q.once('value');
   const chunk = snap.val() || {};
   const keys = Object.keys(chunk);
@@ -178,21 +178,32 @@ async function prunePayments({ limit = 500 } = {}) {
     report.recorded = pendingRecord.length;
   }
 
-  // hapus record terminal >30 hari (yang sudah di-record)
+  // hapus record terminal >30 hari — BATCH delete (1 multi-update null
+  // per 100 ops; null = delete node di RTDB)
+  const toDelete = [];
+  const apikeysOfDeleted = new Set();
   for (const key of keys) {
     if (key.startsWith('__')) continue;
     const p = chunk[key];
     if (!p || !p.idtrx) continue;
     if (isTerminal(p) && isOld(p, cutoffMs)) {
-      await store.removePayment(key);
-      if (p.apikey) {
-        try {
-          const ids = ((await store.getPendingByApikey(p.apikey)) || []).filter((x) => x !== key);
-          await store.setPendingByApikey(p.apikey, ids);
-        } catch (_) { /* best-effort */ }
-      }
-      report.deleted++;
+      toDelete.push(key);
+      if (p.apikey) apikeysOfDeleted.add(String(p.apikey).trim());
     }
+  }
+  for (let i = 0; i < toDelete.length; i += 100) {
+    const ops = {};
+    for (const k of toDelete.slice(i, i + 100)) ops[`payments/${encodeURIComponent(k)}`] = null;
+    await store.multiSet(ops);
+  }
+  report.deleted = toDelete.length;
+
+  // bersihin index pending per-apikey (dedupe, best-effort)
+  for (const ak of apikeysOfDeleted) {
+    try {
+      const ids = ((await store.getPendingByApikey(ak)) || []).filter((x) => !toDelete.includes(x));
+      await store.setPendingByApikey(ak, ids);
+    } catch (_) { /* best-effort */ }
   }
 
   const lastKey = keys.length ? keys[keys.length - 1] : cursor;
@@ -219,7 +230,7 @@ async function pruneWithdraws({ limit = 200 } = {}) {
 
   const cursor = (await store.getPath('meta/retention_withdraws_cursor')) || '';
   let q = getRef('withdraws').orderByKey().limitToFirst(Number(limit));
-  if (cursor) q = q.startAt(cursor);
+  if (cursor) q = q.startAfter(cursor);
   const snap = await q.once('value');
   const chunk = snap.val() || {};
 
