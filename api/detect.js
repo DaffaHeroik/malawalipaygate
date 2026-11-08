@@ -314,7 +314,8 @@ function buildRouter() {
       return res.json({ ok: true, data: { message: 'checkpoint dihapus, backfill ulang dari awal' } });
     }
     const maxSeconds = Math.min(280, Math.max(10, Number(req.query.max_seconds) || 180));
-    const report = await backfillUsers({ maxSeconds });
+    const limit = Math.max(0, Number(req.query.limit) || 0); // 0 = semua sisanya
+    const report = await backfillUsers({ maxSeconds, limit });
     res.json({ ok: true, data: report });
   });
 
