@@ -310,20 +310,30 @@ function buildRouter() {
     const { backfillUsers, resetCursor } = require('./legacy/backfill');
     const action = String(req.query.action || 'run');
     if (action === 'probe') {
-      const cursor = (await store.getPath('meta/backfill_users_cursor')) || '';
-      const getRef = store.getAdminRefForBackfill();
-      const snap = await getRef('users').orderByKey().limitToFirst(1).once('value');
-      const hasUsers = Boolean(snap.val() && Object.keys(snap.val()).length);
-      return res.json({ ok: true, data: { cursor, hasUsers, mode: store.MODE } });
+      const t0 = Date.now();
+      const out = { mode: store.MODE, ms: 0, steps: {} };
+      try {
+        const cursor = (await store.getPath('meta/backfill_users_cursor')) || '';
+        out.steps.cursor_ms = Date.now() - t0;
+        const getRef = store.getAdminRefForBackfill();
+        const snap = await getRef('users').limitToFirst(1).once('value');
+        out.steps.users_limit1_ms = Date.now() - t0;
+        out.usersHasData = Boolean(snap.val() && Object.keys(snap.val()).length);
+        const snap2 = await getRef('users').orderByKey().limitToFirst(1).once('value');
+        out.steps.orderby_ms = Date.now() - t0;
+        out.cursor = cursor;
+      } catch (e) {
+        out.error = String(e.message || e).slice(0, 200);
+      }
+      return res.json({ ok: true, data: out });
     }
     if (action === 'reset') {
       await resetCursor();
       return res.json({ ok: true, data: { message: 'cursor balik ke 0, backfill dari awal' } });
     }
-    const maxSeconds = Math.min(280, Math.max(10, Number(req.query.max_seconds) || 180));
-    const limit = Math.max(0, Number(req.query.limit) || 0); // 0 = semua sisanya
-    const concurrency = Math.min(30, Math.max(1, Number(req.query.concurrency) || 10));
-    const report = await backfillUsers({ maxSeconds, limit, concurrency });
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 300));
+    const concurrency = Math.min(50, Math.max(1, Number(req.query.concurrency) || 25));
+    const report = await backfillUsers({ limit, concurrency });
     res.json({ ok: true, data: report });
   });
 
