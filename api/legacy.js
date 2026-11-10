@@ -30,7 +30,7 @@ const ACTUAL_FEE_ADMIN = 0;
 // Unique-fee tanpa satuan: 0 (pass nominal mentah) atau ratusan 100-300
 // (100, 150, 200, 250, 300) supaya final nominal rapi (renamed "Malawali").
 const UNIQUE_FEE_POOL = [50, 100, 150, 200, 250, 300];
-const PAYMENT_EXPIRY_MS = 2 * 60 * 1000;
+const PAYMENT_EXPIRY_MS = 5 * 60 * 1000;
 const CREATE_COOLDOWN_MS = 20 * 1000;
 const MAX_PENDING_PER_5MIN = 5;
 const MAX_INVOICE_ALIAS_LENGTH = 4;
@@ -53,7 +53,7 @@ const recentPendingInfo = (list, apikey) => {
     if (!p || p.apikey !== apikey || p.status !== 'pending') continue;
     const at = new Date(p.created_at || 0).getTime();
     if (!Number.isFinite(at) || at < now - windowMs) continue;
-    // expiry 2 menit: order yang lewat expires_at ga dihitung "aktif" lagi
+    // expiry 5 menit: order yang lewat expires_at ga dihitung "aktif" lagi
     const exp = new Date(p.expires_at || 0).getTime();
     if (Number.isFinite(exp) && exp > 0 && exp < now) continue;
     c += 1;
