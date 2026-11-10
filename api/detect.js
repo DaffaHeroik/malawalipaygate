@@ -159,10 +159,18 @@ async function matchPayment({ provider, providerTransactionId, amount, occurredA
 async function notifyMerchant(payment, provider, providerTransactionId) {
   try {
     const hooks = await store.getWebhooks(payment.apikey);
+    // Per-request webhook_url (SDK param) di-prioritaskan, dedupe dengan hooks global
+    if (payment.webhook_url && /^https:\/\//.test(String(payment.webhook_url).trim())) {
+      hooks.unshift(String(payment.webhook_url).trim());
+    }
+    const seen = new Set();
     for (const url of hooks) {
       if (!url || !/^https:\/\//.test(String(url).trim())) continue;
+      const key = String(url).trim();
+      if (seen.has(key)) continue;
+      seen.add(key);
       try {
-        await safeFetch(url, {
+        await safeFetch(key, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -170,6 +178,9 @@ async function notifyMerchant(payment, provider, providerTransactionId) {
             provider, provider_transaction_id: providerTransactionId,
             idtrx: payment.idtrx, amount: payment.amount,
             base_amount: payment.base_amount, paid_at: payment.paid_at,
+            order_id: payment.order_id || null,
+            client_ref: payment.client_ref || null,
+            customer_name: payment.customer_name || null,
           }),
         }).catch(() => {});
       } catch (_) { /* URL dip-block guard → skip */ }

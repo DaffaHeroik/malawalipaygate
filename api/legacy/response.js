@@ -11,13 +11,14 @@ function buildErrorResponse(message, code = 'PAYMENT_CREATE_FAILED', extra = {})
   return { status: false, creator: CREATOR, code, message, ...extra };
 }
 
-function buildCreateResponse(payment, req) {
+function buildCreateResponse(payment, req, requestId) {
   const expiresInMs = Math.max(0, new Date(payment.expires_at).getTime() - Date.now());
   return {
     status: true,
     creator: CREATOR,
     code: 'PAYMENT_CREATED',
     message: 'Transaksi berhasil dibuat',
+    request_id: requestId || payment.request_id || null,
     result: {
       idtrx: payment.idtrx,
       invoice_alias: payment.invoice_alias || DEFAULT_INVOICE_ALIAS,

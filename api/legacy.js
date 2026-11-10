@@ -142,7 +142,7 @@ function verifyLegacyHash(hashField, password) {
   return false;
 }
 
-async function allocateUniqueFee(baseAmount) {
+async function allocateUniqueFee(baseAmount, expiryMs = PAYMENT_EXPIRY_MS) {
   // cursor = index UNIQUE_FEE_POOL (0..5). Pool kecil: 0 atau ratusan
   // (100/150/200/250/300) — nominal final tetep rapi, matching aman.
   let cursor = await store.getQueueCursor();
@@ -162,7 +162,7 @@ async function allocateUniqueFee(baseAmount) {
       base_amount: baseAmount,
       unique_fee: fee,
       status: 'reserved',
-      expires_at: new Date(Date.now() + PAYMENT_EXPIRY_MS).toISOString(),
+      expires_at: new Date(Date.now() + expiryMs).toISOString(),
     });
     await store.setQueueCursor((idx + 1) % UNIQUE_FEE_POOL.length);
     return { finalAmount, uniqueFee: fee, feeAdmin: ACTUAL_FEE_ADMIN };
@@ -177,9 +177,13 @@ function buildRouter() {
 
   /* ── /payment/create ── */
   const createHandler = async (req, res) => {
+    const requestId = `req_${crypto.randomBytes(8).toString('hex')}`;
+    const q = req.query || {};
+    const b = req.body || {};
+    const pick = (name) => (q[name] !== undefined ? q[name] : b[name]);
     try {
-      const apikey = sanitizeId(req.query.apikey || req.body?.apikey);
-      const amountRaw = req.query.amount ?? req.body?.amount;
+      const apikey = sanitizeId(pick('apikey'));
+      const amountRaw = pick('amount');
       if (!apikey || amountRaw === undefined || amountRaw === '') {
         return res.json(buildErrorResponse('apikey dan amount wajib diisi', 'INVALID_REQUEST'));
       }
@@ -195,23 +199,48 @@ function buildRouter() {
         return res.json({
           status: true, creator: CREATOR, code: 'PAYMENT_ALREADY_PENDING',
           message: 'Masih ada transaksi pending aktif',
+          request_id: requestId,
           result: { ...buildCreateResponse(pendInfo.latest, req).result },
         });
       }
 
       if (pendInfo.count >= MAX_PENDING_PER_5MIN) {
-        return res.json(buildErrorResponse(`Maksimal ${MAX_PENDING_PER_5MIN} transaksi pending dalam 5 menit`, 'TOO_MANY_PENDING_PAYMENTS'));
+        return res.status(429).json(buildErrorResponse(`Maksimal ${MAX_PENDING_PER_5MIN} transaksi pending dalam 5 menit`, 'TOO_MANY_PENDING_PAYMENTS'));
       }
 
       const user = (await store.getUser(apikey)) || {};
       const invoiceAlias = sanitizeAlias(user.invoice_alias) || DEFAULT_INVOICE_ALIAS;
       const idtrx = await generateIdtrx(invoiceAlias);
 
-      const alloc = await allocateUniqueFee(baseAmount);
-      if (!alloc) return res.json(buildErrorResponse('Antrian nominal unik sedang penuh', 'UNIQUE_AMOUNT_UNAVAILABLE'));
+      /* SDK param (malawali-payment-gateway ≥1.2): expiry_minutes override */
+      let expiryMinutes = pick('expiry_minutes');
+      if (expiryMinutes !== undefined && expiryMinutes !== '') {
+        expiryMinutes = parseInt(String(expiryMinutes).replace(/[^0-9]/g, ''), 10);
+        if (Number.isFinite(expiryMinutes) && expiryMinutes >= 1 && expiryMinutes <= 1440) {
+          expiryMinutes = expiryMinutes;
+        } else {
+          expiryMinutes = undefined;
+        }
+      }
+      const expiryMs = expiryMinutes ? expiryMinutes * 60 * 1000 : PAYMENT_EXPIRY_MS;
+
+      /* Idempotency: kalau idempotency_key pernah dibuat & belum settle, kembalikan order yang sama. */
+      const idempotencyKey = String(pick('idempotency_key') || '').trim().substring(0, 100);
+      if (idempotencyKey) {
+        const prevIdtrx = await store.getIdempotentPayment(apikey, idempotencyKey);
+        if (prevIdtrx) {
+          const prev = await store.getPayment(prevIdtrx);
+          if (prev && prev.apikey === apikey && prev.status === 'pending' && new Date(prev.expires_at || 0).getTime() > Date.now()) {
+            return res.json(buildCreateResponse(prev, req, requestId));
+          }
+        }
+      }
+
+      const alloc = await allocateUniqueFee(baseAmount, expiryMs);
+      if (!alloc) return res.status(429).json(buildErrorResponse('Antrian nominal unik sedang penuh', 'UNIQUE_AMOUNT_UNAVAILABLE'));
 
       const createdAt = new Date().toISOString();
-      const expiresAt = new Date(Date.now() + PAYMENT_EXPIRY_MS).toISOString();
+      const expiresAt = new Date(Date.now() + expiryMs).toISOString();
       const qris = qrisGen.convert(alloc.finalAmount, baseAmount);
       const payment = {
         apikey, idtrx, invoice_alias: invoiceAlias,
@@ -222,8 +251,19 @@ function buildRouter() {
         pay_provider: qris.provider,
         last_checked: null, fee_admin: alloc.feeAdmin,
         expires_at: expiresAt,
+        /* param SDK 1.2.4 (audit + integrasi) */
+        order_id: pick('order_id') !== undefined ? String(pick('order_id')).trim().substring(0, 100) : null,
+        customer_name: pick('customer_name') !== undefined ? String(pick('customer_name')).trim().substring(0, 200) : null,
+        customer_email: pick('customer_email') !== undefined ? String(pick('customer_email')).trim().substring(0, 200) : null,
+        client_ref: pick('client_ref') !== undefined ? String(pick('client_ref')).trim().substring(0, 200) : null,
+        webhook_url: pick('webhook_url') !== undefined ? String(pick('webhook_url')).trim().substring(0, 1024) : null,
+        idempotency_key: idempotencyKey || null,
+        request_id: requestId,
       };
       await store.savePayment(idtrx, payment);
+      if (idempotencyKey) {
+        try { await store.setIdempotentPayment(apikey, idempotencyKey, idtrx); } catch (_) { /* index best-effort */ }
+      }
       // update index pending per-apikey (create = masuk pending)
       try {
         const prev = (await store.getPendingByApikey(apikey)) || [];
@@ -231,10 +271,10 @@ function buildRouter() {
         ids.push(idtrx);
         await store.setPendingByApikey(apikey, ids.slice(-20));
       } catch (_) { /* index best-effort, hot path tetep jalan */ }
-      res.json(buildCreateResponse(payment, req));
+      res.status(201).json(buildCreateResponse(payment, req, requestId));
     } catch (err) {
       console.error('[legacy create]', err.message);
-      res.json(buildErrorResponse('Gagal membuat transaksi', 'PAYMENT_CREATE_ERROR'));
+      res.status(503).json(buildErrorResponse('Gagal membuat transaksi', 'PAYMENT_CREATE_ERROR'));
     }
   };
   r.get('/payment/create', createHandler);

@@ -268,6 +268,15 @@ module.exports = {
   async setLock(key, obj) { await fire.set(`locks/${key}`, obj); },
   async delLock(key) { await fire.set(`locks/${key}`, null); },
 
+  /* Idempotency index: idempotency_key → idtrx (per apikey). */
+  async getIdempotentPayment(apikey, idempotencyKey) {
+    const v = await fire.get(`payments/__idempotent__/${encodeURIComponent(String(apikey).trim())}/${encodeURIComponent(String(idempotencyKey).trim())}`);
+    return v || null;
+  },
+  async setIdempotentPayment(apikey, idempotencyKey, idtrx) {
+    await fire.set(`payments/__idempotent__/${encodeURIComponent(String(apikey).trim())}/${encodeURIComponent(String(idempotencyKey).trim())}`, idtrx);
+  },
+
   async getQueueCursor() {
     const v = await fire.get('meta/payment_queue_cursor');
     const n = Number(v);
