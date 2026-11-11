@@ -363,6 +363,8 @@ function buildRouter() {
         created_at: p.created_at, expires_at: p.expires_at || null,
         paid_at: p.paid_at || null, cancelled_at: p.cancelled_at || null,
         payment_method: p.payment_method || null, sender_name: p.sender_name || null,
+        order_id: p.order_id || null, client_ref: p.client_ref || null,
+        customer_name: p.customer_name || null, customer_email: p.customer_email || null,
       }));
     res.json({
       status: true, creator: CREATOR, code: 'USER_MUTATION_HISTORY',
