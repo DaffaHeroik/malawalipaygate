@@ -13,6 +13,9 @@
  * webhook merchant (best effort) + notifikasi Telegram (best effort).
  */
 
+// VPS tidak punya IPv6 yang jalan (curl -6 gagal) — Node fetch (undici)
+// mencoba IPv6 dulu lalu ETIMEDOUT. Paksa IPv4 dulu supaya webhook keluar jalan.
+try { require('dns').setDefaultResultOrder('ipv4first'); } catch (_) {}
 const express = require('express');
 const crypto = require('crypto');
 const dns = require('dns');
@@ -48,8 +51,13 @@ function isPrivateIp(ip) {
   if (parts.length !== 4) return false;
   const ipNum = ip4ToNum(ip);
   for (const c of PRIVATE_CIDRS) {
-    const netNum = ip4ToNum(c.cidr) & ~(2n ** BigInt(32 - c.mask) - 1n);
-    if ((ipNum & netNum) === netNum) return true;
+    // mask subnet yang benar, lalu bandingkan network address-nya.
+    // (BUG LAMA: AND dengan network address, bukan mask — 0.0.0.0/8
+    //  membuat netNum=0 sehingga (ip & 0) === 0 selalu true → SEMUA
+    //  IPv4 dianggap private → safeFetch memblokir semua webhook.)
+    const mask = (0xFFFFFFFFn << BigInt(32 - c.mask)) & 0xFFFFFFFFn;
+    const netNum = ip4ToNum(c.cidr) & mask;
+    if ((ipNum & mask) === netNum) return true;
   }
   return false;
 }
@@ -170,7 +178,7 @@ async function notifyMerchant(payment, provider, providerTransactionId) {
       if (seen.has(key)) continue;
       seen.add(key);
       try {
-        await safeFetch(key, {
+        const r = await safeFetch(key, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -182,8 +190,9 @@ async function notifyMerchant(payment, provider, providerTransactionId) {
             client_ref: payment.client_ref || null,
             customer_name: payment.customer_name || null,
           }),
-        }).catch(() => {});
-      } catch (_) { /* URL dip-block guard → skip */ }
+        });
+        console.log(`[notifyMerchant] POST ${key} -> HTTP ${r.status} (idtrx=${payment.idtrx})`);
+      } catch (e) { console.log(`[notifyMerchant] GAGAL ${key} (idtrx=${payment.idtrx}): ${e && e.message}`); }
     }
   } catch (_) { /* non-critical */ }
 }
