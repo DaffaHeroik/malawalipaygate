@@ -178,18 +178,38 @@ async function notifyMerchant(payment, provider, providerTransactionId) {
       if (seen.has(key)) continue;
       seen.add(key);
       try {
+        /* Body SESUAI kontrak SDK npmjs (malawali-payment-gateway README §Webhook):
+         *  amount = nominal dasar (amount_requested), total_amount = total bayar
+         *  (amount_to_pay), saldo_added = yang dikredit ke saldo merchant,
+         *  paid_at = waktu bayar. Field lama dipertahankan (backward-compat). */
+        const paidAt = payment.paid_at || new Date().toISOString();
+        const bodyObj = {
+          event: 'payment.paid',
+          provider, provider_transaction_id: providerTransactionId,
+          idtrx: payment.idtrx,
+          amount: payment.base_amount,
+          total_amount: payment.amount,
+          saldo_added: payment.amount,
+          paid_at: paidAt,
+          base_amount: payment.base_amount,
+          order_id: payment.order_id || null,
+          client_ref: payment.client_ref || null,
+          customer_name: payment.customer_name || null,
+        };
+        const bodyStr = JSON.stringify(bodyObj);
+        /* Signature: HMAC-SHA256(body, apikey merchant) — merchant verifikasi
+         * pakai API key-nya sendiri. Timestamp + event di header. */
+        const ts = new Date().toISOString();
+        const sig = crypto.createHmac('sha256', String(payment.apikey || '')).update(bodyStr).digest('hex');
         const r = await safeFetch(key, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'payment.paid',
-            provider, provider_transaction_id: providerTransactionId,
-            idtrx: payment.idtrx, amount: payment.amount,
-            base_amount: payment.base_amount, paid_at: payment.paid_at,
-            order_id: payment.order_id || null,
-            client_ref: payment.client_ref || null,
-            customer_name: payment.customer_name || null,
-          }),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Webhook-Signature': sig,
+            'X-Webhook-Timestamp': ts,
+            'X-Webhook-Event': 'payment.paid',
+          },
+          body: bodyStr,
         });
         console.log(`[notifyMerchant] POST ${key} -> HTTP ${r.status} (idtrx=${payment.idtrx})`);
       } catch (e) { console.log(`[notifyMerchant] GAGAL ${key} (idtrx=${payment.idtrx}): ${e && e.message}`); }
