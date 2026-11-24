@@ -247,6 +247,9 @@ function buildRouter() {
       return res.status(400).json({ ok: false, error: { code: 'unknown_provider', message: 'Provider tidak dikenal.' } });
     }
     const sig = String(req.get('x-signature') || req.get('x-webhook-signature') || '');
+    if (!WEBHOOK_SECRET) {
+      return res.status(503).json({ ok: false, error: { code: 'not_configured', message: 'Webhook belum dikonfigurasi (set LEGACY_WEBHOOK_SECRET).' } });
+    }
     if (WEBHOOK_SECRET) {
       // fail-closed: secret terpasang → signature WAJIB ada & valid
       // (HMAC-SHA256 LEGACY_WEBHOOK_SECRET atas JSON body, hex lowercase)

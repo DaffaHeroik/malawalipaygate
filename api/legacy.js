@@ -142,6 +142,15 @@ function verifyLegacyHash(hashField, password) {
   return false;
 }
 
+/* ── hash password baru: PBKDF2-SHA512, 120k iter, 64B ──
+   Format sama dengan verifyLegacyHash: "saltHex:hashHex" (salt = hex string).
+   Dipakai register + password-reset — JANGAN simpan plaintext lagi. ── */
+function hashPassword(password) {
+  const saltHex = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(String(password), saltHex, 120000, 64, 'sha512');
+  return `${saltHex}:${hash.toString('hex')}`;
+}
+
 async function allocateUniqueFee(baseAmount, expiryMs = PAYMENT_EXPIRY_MS) {
   // cursor = index UNIQUE_FEE_POOL (0..5). Pool kecil: 0 atau ratusan
   // (100/150/200/250/300) — nominal final tetep rapi, matching aman.
@@ -433,6 +442,14 @@ function buildRouter() {
       ['pw', 'password', 'pass'].some((f) => user[f] !== undefined && String(user[f]) === password) ||
       verifyLegacyHash(user.password_hash, password);
     if (!ok) return res.json(buildErrorResponse('Password tidak valid', 'INVALID_PASSWORD'));
+    // Migrasi oportunistik: user lama yang masih simpan plaintext (pw/password/pass)
+    // di-hash sekarang + plaintext dihapus, supaya makin lama makin bersih.
+    // Login sudah berhasil (password cocok), jadi hash ini pasti benar.
+    if (['pw', 'password', 'pass'].some((f) => user[f] !== undefined && user[f] !== null)) {
+      try {
+        await store.patchUser(apikey, { password_hash: hashPassword(password), pw: null, password: null, pass: null });
+      } catch (_) { /* migrasi best-effort; login tetap berhasil */ }
+    }
     res.json({
       status: true, creator: CREATOR, code: 'AUTH_OK', message: 'Login berhasil',
       result: {
@@ -457,7 +474,7 @@ function buildRouter() {
     const newKey = `HKAPI-${crypto.randomBytes(24).toString('base64url')}`;
     await store.setApiKey(newKey, true);
     await store.saveUser(newKey, {
-      name, email, pw: password, plan: 'warga',
+      name, email, password_hash: hashPassword(password), plan: 'warga',
       telegram: telegram || null,
       invoice_alias: DEFAULT_INVOICE_ALIAS, created_at: new Date().toISOString(),
       verified: false,
@@ -515,7 +532,7 @@ function buildRouter() {
     const password = String(req.body?.password || '');
     if (!apikey || !email || !password) return res.json(buildErrorResponse('apikey, email, password wajib diisi', 'INVALID_REQUEST'));
     if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
-    await store.patchUser(apikey, { pw: password, password: password, pwd_reset_at: new Date().toISOString() });
+    await store.patchUser(apikey, { password_hash: hashPassword(password), pw: null, password: null, pass: null, pwd_reset_at: new Date().toISOString() });
     res.json({
       status: true, creator: CREATOR, code: 'PASSWORD_RESET_STARTED',
       message: 'Password reset dimulai',
@@ -553,12 +570,14 @@ function buildRouter() {
     const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
     const webhooks = Array.isArray(req.body?.webhooks) ? req.body.webhooks : [];
     if (!apikey) return res.json(buildErrorResponse('apikey wajib diisi', 'INVALID_REQUEST'));
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
     await store.setWebhooks(apikey, webhooks.filter((w) => w && String(w).trim()));
     res.json({ status: true, creator: CREATOR, code: 'WEBHOOKS_SAVED', message: 'Webhook tersimpan', result: { webhooks: webhooks } });
   });
   r.get('/user/webhooks', async (req, res) => {
     const apikey = sanitizeId(req.query.apikey);
     if (!apikey) return res.json(buildErrorResponse('apikey wajib diisi', 'INVALID_REQUEST'));
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
     res.json({ status: true, creator: CREATOR, code: 'WEBHOOKS_OK', webhooks: await store.getWebhooks(apikey) });
   });
 
@@ -566,6 +585,7 @@ function buildRouter() {
   const withdrawHistoryHandler = async (req, res) => {
     const apikey = sanitizeId(req.query.apikey || req.body?.apikey);
     if (!apikey) return res.json(buildErrorResponse('apikey wajib diisi', 'INVALID_REQUEST'));
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
     const list = await store.getWithdraws(apikey);
     res.json({ status: true, creator: CREATOR, code: 'WITHDRAW_HISTORY', message: 'Riwayat diambil', result: list });
   };
