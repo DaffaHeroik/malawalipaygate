@@ -18,6 +18,7 @@
 const express = require('express');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 
 const store = require('./legacy/store');
 const qrisGen = require('./legacy/qris-gen');
@@ -31,7 +32,8 @@ const ACTUAL_FEE_ADMIN = 0;
 // (100, 150, 200, 250, 300) supaya final nominal rapi (renamed "Malawali").
 const UNIQUE_FEE_POOL = [50, 100, 150, 200, 250, 300];
 const PAYMENT_EXPIRY_MS = 5 * 60 * 1000;
-const CREATE_COOLDOWN_MS = 20 * 1000;
+// (S3: CREATE_COOLDOWN_MS dihapus — dead code, tidak pernah dipakai;
+//  pembatasan request kini ditangani express-rate-limit di bawah.)
 const MAX_PENDING_PER_5MIN = 5;
 const MAX_INVOICE_ALIAS_LENGTH = 4;
 
@@ -184,6 +186,27 @@ async function allocateUniqueFee(baseAmount, expiryMs = PAYMENT_EXPIRY_MS) {
 function buildRouter() {
   const r = express.Router();
 
+  /* ── S3: rate limit (express-rate-limit sudah terinstall sejak lama tapi
+     tidak pernah dipakai di rute mana pun). Diterapkan HANYA ke rute auth
+     sensitif + /payment/create — webhook masuk (/webhook/:provider,
+     /api/listener/push, /api/pending) ada di router detect dan TIDAK ikut
+     ter-limit, begitu juga go-mutasi-poller. `trust proxy` sudah 1 di
+     vercel/entry.js (Cloudflare Tunnel), jadi req.ip = IP klien asli.
+     Counter in-memory per proses (malawali-gw 1 proses → batas efektif
+     20/menit/IP untuk auth, 30/menit/IP untuk create). ── */
+  const rateLimitHandler = (req, res) => res.status(429).json(
+    buildErrorResponse('Terlalu banyak permintaan, coba lagi sebentar', 'TOO_MANY_REQUESTS'));
+  const authLimiter = rateLimit({
+    windowMs: 60 * 1000, limit: 20,
+    standardHeaders: 'draft-7', legacyHeaders: false,
+    handler: rateLimitHandler,
+  });
+  const createLimiter = rateLimit({
+    windowMs: 60 * 1000, limit: 30,
+    standardHeaders: 'draft-7', legacyHeaders: false,
+    handler: rateLimitHandler,
+  });
+
   /* ── /payment/create ── */
   const createHandler = async (req, res) => {
     const requestId = `req_${crypto.randomBytes(8).toString('hex')}`;
@@ -286,8 +309,8 @@ function buildRouter() {
       res.status(503).json(buildErrorResponse('Gagal membuat transaksi', 'PAYMENT_CREATE_ERROR'));
     }
   };
-  r.get('/payment/create', createHandler);
-  r.post('/payment/create', createHandler);
+  r.get('/payment/create', createLimiter, createHandler);
+  r.post('/payment/create', createLimiter, createHandler);
 
   /* ── /payment/check ── */
   const checkHandler = async (req, res) => {
@@ -430,7 +453,9 @@ function buildRouter() {
   });
 
   /* ── auth/* ── */
-  r.post('/auth/login', async (req, res) => {
+  // S3: /auth/profile TIDAK di-limit (baca dashboard, sudah butuh apikey
+  // valid); yang di-limit hanya rute sensitif (login/register/reset).
+  r.post('/auth/login', authLimiter, async (req, res) => {
     const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
     const password = String(req.body?.password || req.query.password || '');
     if (!apikey || !password) return res.json(buildErrorResponse('apikey dan password wajib diisi', 'INVALID_REQUEST', { code: 'EMAIL_REQUIRED' }));
@@ -464,7 +489,7 @@ function buildRouter() {
     });
   });
 
-  r.post('/auth/register/start', async (req, res) => {
+  r.post('/auth/register/start', authLimiter, async (req, res) => {
     const name = String(req.body?.name || '').trim().slice(0, 80);
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
@@ -473,34 +498,43 @@ function buildRouter() {
     // buat apikey baru
     const newKey = `HKAPI-${crypto.randomBytes(24).toString('base64url')}`;
     await store.setApiKey(newKey, true);
+    // S1: TIDAK ADA infrastruktur pengiriman OTP di sistem ini (tidak ada
+    // OTP yang dibuat/dikirim — field otp_sent dulu fiktif). Verifikasi
+    // adalah manual oleh owner; akun langsung aktif saat register dan flag
+    // `verified` bersifat informasional (tidak pernah dicek endpoint mana pun).
     await store.saveUser(newKey, {
       name, email, password_hash: hashPassword(password), plan: 'warga',
       telegram: telegram || null,
       invoice_alias: DEFAULT_INVOICE_ALIAS, created_at: new Date().toISOString(),
-      verified: false,
+      verified: true, verified_at: new Date().toISOString(), verified_by: 'registration',
     });
-    // OTP dikirim ke Telegram / email (best effort) — verifikasi manual owner
     res.json({
       status: true, creator: CREATOR, code: 'REGISTER_STARTED',
       message: 'Pendaftaran dimulai',
-      // SPA menampilkan banner sesuai `delivery`: log_only = "OTP dibuat, cek log server"
+      // SPA menampilkan banner sesuai `delivery`; 'none' + delivery_message
+      // → banner sukses berisi pesan ini (bukan lagi klaim OTP).
       result: {
-        email, api_key: newKey, otp_sent: true,
-        delivery: 'log_only', delivery_message: 'OTP dicatat (verifikasi manual owner). Cek log server.',
+        email, api_key: newKey, otp_sent: false,
+        delivery: 'none', delivery_message: 'Akun langsung aktif — verifikasi manual oleh owner (tidak ada OTP).',
       },
     });
   });
 
-  r.post('/auth/register/verify-otp', async (req, res) => {
+  r.post('/auth/register/verify-otp', authLimiter, async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
-    const otp = String(req.body?.otp || '');
-    // verifikasi sederhana: cari user by email belum verified
+    // S1: endpoint ini DIPERTAHANKAN untuk kompatibilitas SPA (alur register
+    // SPA memanggilnya lalu membangun session dari result.apikey), tapi TIDAK
+    // LAGI memverifikasi apa pun: tidak ada OTP di sistem ini, nilai `otp`
+    // yang dikirim SPA diabaikan — tidak pernah diperiksa. Endpoint ini hanya
+    // mengembalikan session untuk akun yang SUDAH terverifikasi (saat register
+    // / manual owner). Akun yang belum terverifikasi → ditolak.
     const allKeys = await store.getApikeySet();
     for (const k of Object.keys(allKeys)) {
       const u = await store.getUser(k);
-      if (u && u.email === email && u.verified !== true) {
-        // jika tidak ada OTP di-verify, tetapkan valid (owner control)
-        await store.patchUser(k, { verified: true, verified_at: new Date().toISOString() });
+      if (u && u.email === email) {
+        if (u.verified !== true) {
+          return res.json(buildErrorResponse('Akun belum terverifikasi — hubungi owner untuk verifikasi manual', 'NOT_VERIFIED'));
+        }
         // SPA baca result.apikey + result.name + result.email untuk bangun session
         return res.json({
           status: true, creator: CREATOR, code: 'REGISTER_VERIFIED',
@@ -509,29 +543,46 @@ function buildRouter() {
         });
       }
     }
-    res.json(buildErrorResponse('Email tidak ditemukan atau sudah terverifikasi', 'EMAIL_NOT_FOUND'));
+    res.json(buildErrorResponse('Email tidak ditemukan', 'EMAIL_NOT_FOUND'));
   });
 
-  r.post('/auth/legacy/verify/start', async (req, res) => {
+  r.post('/auth/legacy/verify/start', authLimiter, async (req, res) => {
     const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
     if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
     res.json({
       status: true, creator: CREATOR, code: 'LEGACY_VERIFY_STARTED',
       message: 'Verifikasi dimulai',
-      // SPA menampilkan banner sesuai `delivery`: log_only = "OTP dibuat, cek log server"
+      // S1: tidak ada OTP — banner jujur (bukan klaim OTP).
       result: {
-        delivery: 'log_only',
-        delivery_message: 'OTP dicatat (verifikasi manual owner). Cek log server.',
+        delivery: 'none',
+        delivery_message: 'Verifikasi manual oleh owner (tidak ada OTP).',
       },
     });
   });
 
-  r.post('/auth/password-reset/start', async (req, res) => {
+  r.post('/auth/password-reset/start', authLimiter, async (req, res) => {
     const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
     const email = String(req.body?.email || '').trim().toLowerCase();
+    const oldPassword = String(req.body?.old_password || req.body?.oldPassword || '');
     const password = String(req.body?.password || '');
-    if (!apikey || !email || !password) return res.json(buildErrorResponse('apikey, email, password wajib diisi', 'INVALID_REQUEST'));
+    if (!apikey || !email || !oldPassword || !password) return res.json(buildErrorResponse('apikey, email, password lama dan password baru wajib diisi', 'INVALID_REQUEST'));
     if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
+    const user = (await store.getUser(apikey)) || {};
+    // S2: email harus cocok dengan akun (dulu tidak dicek sama sekali).
+    if (user.email && String(user.email).toLowerCase() !== email) {
+      return res.json(buildErrorResponse('Email tidak cocok dengan akun ini', 'EMAIL_MISMATCH'));
+    }
+    // S2: WAJIB password lama — tanpa ini, siapa pun yang tahu apikey +
+    // email bisa mengambil alih password dashboard merchant. Logika cek sama
+    // dengan login (plaintext lama ATAU PBKDF2/scrypt `salt:hash`).
+    // KONSEKUENSI: alur "Lupa Password" SPA (yang tidak punya field password
+    // lama) tidak lagi bisa reset mandiri — kasus benar-benar lupa password
+    // harus reset manual oleh owner. SPA perlu field password lama / halaman
+    // "Ganti Password" terpisah (source SPA tidak ada di repo ini).
+    const oldOk =
+      ['pw', 'password', 'pass'].some((f) => user[f] !== undefined && String(user[f]) === oldPassword) ||
+      verifyLegacyHash(user.password_hash, oldPassword);
+    if (!oldOk) return res.json(buildErrorResponse('Password lama tidak valid', 'INVALID_OLD_PASSWORD'));
     await store.patchUser(apikey, { password_hash: hashPassword(password), pw: null, password: null, pass: null, pwd_reset_at: new Date().toISOString() });
     res.json({
       status: true, creator: CREATOR, code: 'PASSWORD_RESET_STARTED',
@@ -541,7 +592,23 @@ function buildRouter() {
     });
   });
 
-  r.post('/auth/password-reset/verify-otp', async (req, res) => {
+  r.post('/auth/password-reset/verify-otp', authLimiter, async (req, res) => {
+    const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    // S1: tidak ada OTP di sistem ini — nilai `otp` diabaikan. Endpoint ini
+    // dipertahankan untuk kompatibilitas SPA (alur lupa-password memanggilnya
+    // sebelum login dengan password baru), tapi sekarang melakukan pengecekan
+    // NYATA: apikey harus valid, email harus cocok, dan harus ada reset yang
+    // sudah terjadi (pwd_reset_at dari /password-reset/start). Tanpa reset
+    // yang mendahului → ditolak (dulu selalu sukses tanpa memeriksa apa pun).
+    if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
+    const u = (await store.getUser(apikey)) || {};
+    if (!u || (email && u.email && String(u.email).toLowerCase() !== email)) {
+      return res.json(buildErrorResponse('Akun tidak ditemukan', 'EMAIL_NOT_FOUND'));
+    }
+    if (!u.pwd_reset_at) {
+      return res.json(buildErrorResponse('Tidak ada reset password yang sedang berjalan', 'NO_RESET_IN_PROGRESS'));
+    }
     res.json({ status: true, creator: CREATOR, code: 'PASSWORD_RESET_VERIFIED', message: 'Password reset terverifikasi' });
   });
 
