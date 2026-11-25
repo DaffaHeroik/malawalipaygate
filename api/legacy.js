@@ -28,9 +28,9 @@ const { buildErrorResponse, buildCreateResponse, CREATOR, DEFAULT_INVOICE_ALIAS 
 const MIN_AMOUNT = 100;
 const MAX_BASE_AMOUNT = 10000000;
 const ACTUAL_FEE_ADMIN = 0;
-// Unique-fee tanpa satuan: 0 (pass nominal mentah) atau ratusan 100-300
-// (100, 150, 200, 250, 300) supaya final nominal rapi (renamed "Malawali").
-const UNIQUE_FEE_POOL = [50, 100, 150, 200, 250, 300];
+// Unique-fee tanpa satuan: 0 (pass nominal mentah) atau puluhan 50-150
+// (50, 100, 150) supaya final nominal rapi (renamed "Malawali").
+const UNIQUE_FEE_POOL = [50, 100, 150];
 const PAYMENT_EXPIRY_MS = 5 * 60 * 1000;
 // (S3: CREATE_COOLDOWN_MS dihapus — dead code, tidak pernah dipakai;
 //  pembatasan request kini ditangani express-rate-limit di bawah.)
@@ -304,8 +304,8 @@ async function findApikeyByEmail(email) {
 }
 
 async function allocateUniqueFee(baseAmount, expiryMs = PAYMENT_EXPIRY_MS) {
-  // cursor = index UNIQUE_FEE_POOL (0..5). Pool kecil: 0 atau ratusan
-  // (100/150/200/250/300) — nominal final tetep rapi, matching aman.
+  // cursor = index UNIQUE_FEE_POOL (0..2). Pool kecil: 0 atau puluhan
+  // (50/100/150) — nominal final tetep rapi, matching aman.
   let cursor = await store.getQueueCursor();
   if (!Number.isInteger(cursor) || cursor < 0 || cursor >= UNIQUE_FEE_POOL.length) cursor = 0;
   for (let i = 0; i < UNIQUE_FEE_POOL.length; i++) {
