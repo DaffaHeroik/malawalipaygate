@@ -277,12 +277,6 @@ module.exports = {
     await fire.set(`payments/__idempotent__/${encodeURIComponent(String(apikey).trim())}/${encodeURIComponent(String(idempotencyKey).trim())}`, idtrx);
   },
 
-  async getQueueCursor() {
-    const v = await fire.get('meta/payment_queue_cursor');
-    const n = Number(v);
-    return Number.isInteger(n) ? n : 0;
-  },
-  async setQueueCursor(n) { await fire.set('meta/payment_queue_cursor', n); },
 
   async getWebhooks(apikey) {
     const v = await fire.get(`webhooks/${encodeURIComponent(String(apikey).trim())}`);
