@@ -153,6 +153,156 @@ function hashPassword(password) {
   return `${saltHex}:${hash.toString('hex')}`;
 }
 
+/* ── OTP sungguhan via Resend ──
+   Register + reset password mengirim kode 6 digit ke email merchant.
+   - Kode dibuat dengan crypto.randomInt, yang disimpan HANYA hash SHA-256
+     (+ expiry 10 menit + hitung percobaan, maks 5) di record user Firebase.
+   - Kirim via POST https://api.resend.com/emails (fetch bawaan Node, tanpa
+     dependensi baru), pengirim noreply@malawalipayment.web.id (domain
+     terverifikasi di akun Resend daffaheroik2020@gmail.com).
+   - Kunci dibaca dari env RESEND_API_KEY, fallback file
+     /root/hero-secrets/resend-api-key.txt (chmod 600) — JANGAN hardcode
+     ke kode/repo. Kunci ini restricted "hanya kirim email" (tidak bisa
+     baca domain/log via API — itu memang disengaja, least privilege).
+   - OTP_TEST_MODE=1 (hanya untuk tes lokal): respons start/resend ikut
+     menyertakan result.debug_otp supaya tes bisa verifikasi tanpa baca
+     inbox. JANGAN PERNAH set di proses produksi (VPS) — kode OTP tidak
+     boleh bocor lewat respons API. ── */
+const OTP_LENGTH = 6;
+const OTP_EXPIRY_MS = Number(process.env.OTP_EXPIRY_MS || 10 * 60 * 1000); // 10 menit (override env hanya untuk tes)
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_FROM = 'Malawali Payment <noreply@malawalipayment.web.id>';
+const RESEND_API_URL = 'https://api.resend.com/emails';
+const RESEND_KEY_FILE = '/root/hero-secrets/resend-api-key.txt';
+
+let resendKeyCache = null; // null = belum dicoba; '' = tidak ada
+function getResendKey() {
+  if (resendKeyCache !== null) return resendKeyCache;
+  if (process.env.RESEND_API_KEY && String(process.env.RESEND_API_KEY).trim()) {
+    resendKeyCache = String(process.env.RESEND_API_KEY).trim();
+    return resendKeyCache;
+  }
+  try {
+    resendKeyCache = require('fs').readFileSync(RESEND_KEY_FILE, 'utf8').trim();
+  } catch (_) { resendKeyCache = ''; }
+  return resendKeyCache;
+}
+
+function generateOtpCode() {
+  return String(crypto.randomInt(0, 1000000)).padStart(OTP_LENGTH, '0');
+}
+
+function hashOtp(code) {
+  return crypto.createHash('sha256').update(String(code)).digest('hex');
+}
+
+function otpCodeMatches(code, hash) {
+  const a = Buffer.from(hashOtp(code), 'utf8');
+  const b = Buffer.from(String(hash || ''), 'utf8');
+  if (a.length !== b.length) return false;
+  try { return crypto.timingSafeEqual(a, b); } catch (_) { return false; }
+}
+
+async function sendOtpEmail(to, code, purpose) {
+  const key = getResendKey();
+  if (!key) return { ok: false, error: 'EMAIL_NOT_CONFIGURED' };
+  const isReset = purpose === 'reset';
+  const subject = isReset
+    ? 'Kode reset password Malawali Payment'
+    : 'Kode verifikasi Malawali Payment';
+  const text =
+    `Kode ${isReset ? 'reset password' : 'verifikasi'} Malawali Payment Anda: ${code}\n\n` +
+    'Kode berlaku 10 menit. Jangan berikan kode ini kepada siapa pun, termasuk yang mengaku dari Malawali Payment.';
+  const html =
+    `<div style="font-family:sans-serif;max-width:480px;margin:0 auto">` +
+    `<h2 style="margin:0 0 8px">Malawali Payment</h2>` +
+    `<p>Kode ${isReset ? 'reset password' : 'verifikasi'} Anda:</p>` +
+    `<p style="font-size:32px;letter-spacing:8px;font-weight:bold;margin:8px 0">${code}</p>` +
+    `<p style="color:#555">Kode berlaku 10 menit. Jangan berikan kode ini kepada siapa pun.</p>` +
+    `</div>`;
+  try {
+    const resp = await fetch(RESEND_API_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: OTP_FROM, to: [to], subject, html, text }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      console.error('[otp] Resend error', resp.status, (data && (data.message || data.name)) || '');
+      return { ok: false, error: 'EMAIL_SEND_FAILED' };
+    }
+    return { ok: true, emailId: data && data.id ? String(data.id) : null };
+  } catch (e) {
+    console.error('[otp] Resend fetch error', (e && e.message) || e);
+    return { ok: false, error: 'EMAIL_SEND_FAILED' };
+  }
+}
+
+/* Buat + simpan OTP baru untuk user (hash + expiry + reset percobaan).
+   Mengembalikan kode plaintext — pemanggil WAJIB hanya memakainya untuk
+   dikirim via email (atau result.debug_otp saat OTP_TEST_MODE), jangan
+   pernah me-log atau menyimpannya. */
+async function issueOtp(apikey, purpose) {
+  const code = generateOtpCode();
+  const now = Date.now();
+  await store.patchUser(apikey, {
+    otp_hash: hashOtp(code),
+    otp_expires_at: new Date(now + OTP_EXPIRY_MS).toISOString(),
+    otp_attempts: 0,
+    otp_purpose: purpose,
+    otp_issued_at: new Date(now).toISOString(),
+  });
+  return code;
+}
+
+async function clearOtp(apikey) {
+  await store.patchUser(apikey, {
+    otp_hash: null, otp_expires_at: null, otp_attempts: null,
+    otp_purpose: null, otp_issued_at: null,
+  });
+}
+
+/* Cek kode OTP user. Setiap percobaan salah menambah otp_attempts.
+   Return {ok:true} atau {ok:false, code, message}. */
+async function checkOtp(apikey, code, purpose) {
+  const u = (await store.getUser(apikey)) || {};
+  if (!u.otp_hash || !u.otp_expires_at) {
+    return { ok: false, code: 'NO_OTP', message: 'Tidak ada kode OTP yang aktif — minta kode baru' };
+  }
+  if (u.otp_purpose && u.otp_purpose !== purpose) {
+    return { ok: false, code: 'NO_OTP', message: 'Kode OTP tidak berlaku untuk alur ini — minta kode baru' };
+  }
+  if ((u.otp_attempts || 0) >= OTP_MAX_ATTEMPTS) {
+    return { ok: false, code: 'OTP_TOO_MANY_ATTEMPTS', message: 'Terlalu banyak percobaan salah — minta kode baru' };
+  }
+  if (new Date(u.otp_expires_at).getTime() <= Date.now()) {
+    return { ok: false, code: 'OTP_EXPIRED', message: 'Kode OTP sudah kedaluwarsa — minta kode baru' };
+  }
+  if (!otpCodeMatches(code, u.otp_hash)) {
+    const attempts = (u.otp_attempts || 0) + 1;
+    await store.patchUser(apikey, { otp_attempts: attempts });
+    const left = OTP_MAX_ATTEMPTS - attempts;
+    return {
+      ok: false, code: 'INVALID_OTP',
+      message: left > 0
+        ? `Kode OTP salah — ${left} percobaan tersisa`
+        : 'Kode OTP salah — terlalu banyak percobaan, minta kode baru',
+    };
+  }
+  return { ok: true };
+}
+
+/* Cari apikey user berdasarkan email (dipakai verify-otp register yang
+   hanya menerima email + otp, sesuai panggilan SPA). */
+async function findApikeyByEmail(email) {
+  const allKeys = await store.getApikeySet();
+  for (const k of Object.keys(allKeys)) {
+    const u = await store.getUser(k);
+    if (u && u.email && String(u.email).toLowerCase() === email) return k;
+  }
+  return null;
+}
+
 async function allocateUniqueFee(baseAmount, expiryMs = PAYMENT_EXPIRY_MS) {
   // cursor = index UNIQUE_FEE_POOL (0..5). Pool kecil: 0 atau ratusan
   // (100/150/200/250/300) — nominal final tetep rapi, matching aman.
@@ -511,52 +661,112 @@ function buildRouter() {
     // buat apikey baru
     const newKey = `HKAPI-${crypto.randomBytes(24).toString('base64url')}`;
     await store.setApiKey(newKey, true);
-    // S1: TIDAK ADA infrastruktur pengiriman OTP di sistem ini (tidak ada
-    // OTP yang dibuat/dikirim — field otp_sent dulu fiktif). Verifikasi
-    // adalah manual oleh owner; akun langsung aktif saat register dan flag
-    // `verified` bersifat informasional (tidak pernah dicek endpoint mana pun).
+    // OTP sungguhan via Resend: akun dibuat BELUM terverifikasi; kode 6
+    // digit dikirim ke email merchant (hash + expiry 10 mnt + maks 5
+    // percobaan disimpan di record user). Akun baru aktif (verified:true)
+    // setelah kode benar di /auth/register/verify-otp.
     await store.saveUser(newKey, {
       name, email, password_hash: hashPassword(password), plan: 'warga',
       telegram: telegram || null,
       invoice_alias: DEFAULT_INVOICE_ALIAS, created_at: new Date().toISOString(),
-      verified: true, verified_at: new Date().toISOString(), verified_by: 'registration',
+      verified: false,
     });
+    const otpCode = await issueOtp(newKey, 'register');
+    const sent = await sendOtpEmail(email, otpCode, 'register');
+    if (!sent.ok) {
+      // Akun sudah dibuat (belum terverifikasi) — user bisa minta kirim
+      // ulang via /auth/register/resend-otp. SPA menampilkan pesan error.
+      return res.json(buildErrorResponse(
+        sent.error === 'EMAIL_NOT_CONFIGURED'
+          ? 'Email server belum dikonfigurasi — hubungi owner'
+          : 'Gagal mengirim kode OTP ke email — coba kirim ulang',
+        sent.error,
+        { result: { email, api_key: newKey, otp_sent: false, delivery: 'failed' } },
+      ));
+    }
     res.json({
       status: true, creator: CREATOR, code: 'REGISTER_STARTED',
       message: 'Pendaftaran dimulai',
-      // SPA menampilkan banner sesuai `delivery`; 'none' + delivery_message
-      // → banner sukses berisi pesan ini (bukan lagi klaim OTP).
+      // SPA menampilkan banner sesuai `delivery` + `delivery_message`,
+      // lalu pindah ke layar OTP. 'email' → banner sukses.
       result: {
-        email, api_key: newKey, otp_sent: false,
-        delivery: 'none', delivery_message: 'Akun langsung aktif — verifikasi manual oleh owner (tidak ada OTP).',
+        email, api_key: newKey, otp_sent: true,
+        delivery: 'email',
+        delivery_message: 'Kode OTP sudah dikirim ke email Anda (berlaku 10 menit).',
+        email_id: sent.emailId || null,
+        // HANYA saat OTP_TEST_MODE=1 (tes lokal): sertakan kode supaya tes
+        // bisa verifikasi tanpa baca inbox. TIDAK PERNAH di produksi.
+        ...(process.env.OTP_TEST_MODE === '1' ? { debug_otp: otpCode } : {}),
       },
     });
   });
 
   r.post('/auth/register/verify-otp', authLimiter, async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
-    // S1: endpoint ini DIPERTAHANKAN untuk kompatibilitas SPA (alur register
-    // SPA memanggilnya lalu membangun session dari result.apikey), tapi TIDAK
-    // LAGI memverifikasi apa pun: tidak ada OTP di sistem ini, nilai `otp`
-    // yang dikirim SPA diabaikan — tidak pernah diperiksa. Endpoint ini hanya
-    // mengembalikan session untuk akun yang SUDAH terverifikasi (saat register
-    // / manual owner). Akun yang belum terverifikasi → ditolak.
-    const allKeys = await store.getApikeySet();
-    for (const k of Object.keys(allKeys)) {
-      const u = await store.getUser(k);
-      if (u && u.email === email) {
-        if (u.verified !== true) {
-          return res.json(buildErrorResponse('Akun belum terverifikasi — hubungi owner untuk verifikasi manual', 'NOT_VERIFIED'));
-        }
-        // SPA baca result.apikey + result.name + result.email untuk bangun session
-        return res.json({
-          status: true, creator: CREATOR, code: 'REGISTER_VERIFIED',
-          message: 'Pendaftaran terverifikasi',
-          result: { apikey: k, api_key: k, name: u.name || null, email: u.email || email },
-        });
-      }
+    const otp = String(req.body?.otp || '').trim();
+    // OTP sungguhan: kode dicocokkan dengan hash yang disimpan saat
+    // register/start (kedaluwarsa 10 mnt, maks 5 percobaan salah). Akun
+    // baru verified:true setelah kode benar. Sudah terverifikasi →
+    // kembalikan session (idempotent, mis. submit ganda).
+    if (!email || !otp) return res.json(buildErrorResponse('email dan otp wajib diisi', 'INVALID_REQUEST'));
+    const apikey = await findApikeyByEmail(email);
+    if (!apikey) return res.json(buildErrorResponse('Email tidak ditemukan', 'EMAIL_NOT_FOUND'));
+    const u = (await store.getUser(apikey)) || {};
+    if (u.verified === true) {
+      // SPA baca result.apikey + result.name + result.email untuk bangun session
+      return res.json({
+        status: true, creator: CREATOR, code: 'REGISTER_VERIFIED',
+        message: 'Pendaftaran terverifikasi',
+        result: { apikey, api_key: apikey, name: u.name || null, email: u.email || email },
+      });
     }
-    res.json(buildErrorResponse('Email tidak ditemukan', 'EMAIL_NOT_FOUND'));
+    const check = await checkOtp(apikey, otp, 'register');
+    if (!check.ok) return res.json(buildErrorResponse(check.message, check.code));
+    await store.patchUser(apikey, {
+      verified: true, verified_at: new Date().toISOString(), verified_by: 'otp-email',
+    });
+    await clearOtp(apikey);
+    // SPA baca result.apikey + result.name + result.email untuk bangun session
+    res.json({
+      status: true, creator: CREATOR, code: 'REGISTER_VERIFIED',
+      message: 'Pendaftaran terverifikasi',
+      result: { apikey, api_key: apikey, name: u.name || null, email: u.email || email },
+    });
+  });
+
+  // Kirim ulang kode OTP register (mis. email telat / salah ketik alamat
+  // sudah tidak bisa — email terikat ke akun; endpoint ini untuk akun yang
+  // belum terverifikasi). Ikut ter-limit authLimiter (20/mnt/IP).
+  r.post('/auth/register/resend-otp', authLimiter, async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return res.json(buildErrorResponse('email wajib diisi', 'INVALID_REQUEST'));
+    const apikey = await findApikeyByEmail(email);
+    if (!apikey) return res.json(buildErrorResponse('Email tidak ditemukan', 'EMAIL_NOT_FOUND'));
+    const u = (await store.getUser(apikey)) || {};
+    if (u.verified === true) {
+      return res.json(buildErrorResponse('Akun sudah terverifikasi', 'ALREADY_VERIFIED'));
+    }
+    const otpCode = await issueOtp(apikey, 'register');
+    const sent = await sendOtpEmail(email, otpCode, 'register');
+    if (!sent.ok) {
+      return res.json(buildErrorResponse(
+        sent.error === 'EMAIL_NOT_CONFIGURED'
+          ? 'Email server belum dikonfigurasi — hubungi owner'
+          : 'Gagal mengirim kode OTP ke email — coba lagi sebentar',
+        sent.error,
+        { result: { email, otp_sent: false, delivery: 'failed' } },
+      ));
+    }
+    res.json({
+      status: true, creator: CREATOR, code: 'OTP_RESENT',
+      message: 'Kode OTP dikirim ulang',
+      result: {
+        email, otp_sent: true, delivery: 'email',
+        delivery_message: 'Kode OTP baru sudah dikirim ke email Anda (berlaku 10 menit).',
+        email_id: sent.emailId || null,
+        ...(process.env.OTP_TEST_MODE === '1' ? { debug_otp: otpCode } : {}),
+      },
+    });
   });
 
   r.post('/auth/legacy/verify/start', authLimiter, async (req, res) => {
@@ -596,32 +806,64 @@ function buildRouter() {
       ['pw', 'password', 'pass'].some((f) => user[f] !== undefined && String(user[f]) === oldPassword) ||
       verifyLegacyHash(user.password_hash, oldPassword);
     if (!oldOk) return res.json(buildErrorResponse('Password lama tidak valid', 'INVALID_OLD_PASSWORD'));
-    await store.patchUser(apikey, { password_hash: hashPassword(password), pw: null, password: null, pass: null, pwd_reset_at: new Date().toISOString() });
+    // OTP reset: password BARU disimpan sebagai pending (hash) dan BARU
+    // diterapkan setelah kode OTP benar di /password-reset/verify-otp.
+    // Password lama tetap berlaku sampai verifikasi berhasil.
+    await store.patchUser(apikey, {
+      pending_password_hash: hashPassword(password),
+      pwd_reset_requested_at: new Date().toISOString(),
+    });
+    const otpCode = await issueOtp(apikey, 'reset');
+    const sent = await sendOtpEmail(email, otpCode, 'reset');
+    if (!sent.ok) {
+      await store.patchUser(apikey, { pending_password_hash: null, pwd_reset_requested_at: null });
+      await clearOtp(apikey);
+      return res.json(buildErrorResponse(
+        sent.error === 'EMAIL_NOT_CONFIGURED'
+          ? 'Email server belum dikonfigurasi — hubungi owner'
+          : 'Gagal mengirim kode OTP ke email — coba lagi sebentar',
+        sent.error,
+        { result: { delivery: 'failed' } },
+      ));
+    }
     res.json({
       status: true, creator: CREATOR, code: 'PASSWORD_RESET_STARTED',
       message: 'Password reset dimulai',
-      // SPA baca result.delivery_message buat banner
-      result: { delivery: 'log_only', delivery_message: 'Password sudah di-reset (tanpa email server).' },
+      // SPA baca result.delivery_message buat banner, lalu pindah ke layar OTP.
+      result: {
+        otp_sent: true, delivery: 'email',
+        delivery_message: 'Kode OTP reset password sudah dikirim ke email Anda (berlaku 10 menit).',
+        email_id: sent.emailId || null,
+        ...(process.env.OTP_TEST_MODE === '1' ? { debug_otp: otpCode } : {}),
+      },
     });
   });
 
   r.post('/auth/password-reset/verify-otp', authLimiter, async (req, res) => {
     const apikey = sanitizeId(req.body?.apikey || req.query.apikey);
     const email = String(req.body?.email || '').trim().toLowerCase();
-    // S1: tidak ada OTP di sistem ini — nilai `otp` diabaikan. Endpoint ini
-    // dipertahankan untuk kompatibilitas SPA (alur lupa-password memanggilnya
-    // sebelum login dengan password baru), tapi sekarang melakukan pengecekan
-    // NYATA: apikey harus valid, email harus cocok, dan harus ada reset yang
-    // sudah terjadi (pwd_reset_at dari /password-reset/start). Tanpa reset
-    // yang mendahului → ditolak (dulu selalu sukses tanpa memeriksa apa pun).
+    const otp = String(req.body?.otp || '').trim();
+    // OTP sungguhan: kode dicocokkan dengan hash dari /password-reset/start
+    // (kedaluwarsa 10 mnt, maks 5 percobaan). Baru setelah kode benar,
+    // password pending diterapkan — password lama tetap berlaku sampai sini.
     if (!(await store.verifyApiKey(apikey))) return res.json(buildErrorResponse('APIKEY tidak valid', 'INVALID_APIKEY'));
     const u = (await store.getUser(apikey)) || {};
     if (!u || (email && u.email && String(u.email).toLowerCase() !== email)) {
       return res.json(buildErrorResponse('Akun tidak ditemukan', 'EMAIL_NOT_FOUND'));
     }
-    if (!u.pwd_reset_at) {
+    if (!u.pending_password_hash) {
       return res.json(buildErrorResponse('Tidak ada reset password yang sedang berjalan', 'NO_RESET_IN_PROGRESS'));
     }
+    if (!otp) return res.json(buildErrorResponse('otp wajib diisi', 'INVALID_REQUEST'));
+    const check = await checkOtp(apikey, otp, 'reset');
+    if (!check.ok) return res.json(buildErrorResponse(check.message, check.code));
+    await store.patchUser(apikey, {
+      password_hash: u.pending_password_hash,
+      pw: null, password: null, pass: null,
+      pending_password_hash: null,
+      pwd_reset_at: new Date().toISOString(),
+    });
+    await clearOtp(apikey);
     res.json({ status: true, creator: CREATOR, code: 'PASSWORD_RESET_VERIFIED', message: 'Password reset terverifikasi' });
   });
 
