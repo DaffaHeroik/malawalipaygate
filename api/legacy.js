@@ -196,15 +196,28 @@ function buildRouter() {
      20/menit/IP untuk auth, 30/menit/IP untuk create). ── */
   const rateLimitHandler = (req, res) => res.status(429).json(
     buildErrorResponse('Terlalu banyak permintaan, coba lagi sebentar', 'TOO_MANY_REQUESTS'));
+  // Kunci limiter: IP klien ASLI, bukan IP edge Cloudflare. `trust proxy` di
+  // entry.js = 1, tapi rantai ke :3100 ada 2 hop (edge Cloudflare →
+  // cloudflared → app), sehingga req.ip jatuh ke IP edge — semua klien yang
+  // lewat satu edge berbagi satu budget, dan satu penyerang bisa dapat
+  // budget per edge. cloudflared meneruskan CF-Connecting-IP yang di-set
+  // edge Cloudflare (tidak bisa di-spoof lewat tunnel — edge menimpanya
+  // dengan IP koneksi asli), jadi itu kunci yang benar; fallback req.ip
+  // kalau header tidak ada (mis. akses langsung / Vercel).
+  const clientIpKey = (req) => {
+    const cf = String(req.get('cf-connecting-ip') || '').trim();
+    if (/^[0-9a-fA-F:.]+$/.test(cf)) return `cf:${cf}`;
+    return req.ip;
+  };
   const authLimiter = rateLimit({
     windowMs: 60 * 1000, limit: 20,
     standardHeaders: 'draft-7', legacyHeaders: false,
-    handler: rateLimitHandler,
+    handler: rateLimitHandler, keyGenerator: clientIpKey,
   });
   const createLimiter = rateLimit({
     windowMs: 60 * 1000, limit: 30,
     standardHeaders: 'draft-7', legacyHeaders: false,
-    handler: rateLimitHandler,
+    handler: rateLimitHandler, keyGenerator: clientIpKey,
   });
 
   /* ── /payment/create ── */
