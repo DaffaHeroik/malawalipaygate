@@ -28,10 +28,10 @@ const { buildErrorResponse, buildCreateResponse, CREATOR, DEFAULT_INVOICE_ALIAS 
 const MIN_AMOUNT = 100;
 const MAX_BASE_AMOUNT = 10000000;
 const ACTUAL_FEE_ADMIN = 0;
-// Unique-fee: angka acak 1-150 rupiah (crypto.randomInt, bukan pool tetap
-// dan bukan kelipatan 50). Total bayar = nominal dasar + fee acak;
-// final amount di-reservasi supaya tidak tabrakan antar payment pending
-// dengan nominal dasar yang sama.
+// Unique fee: usahakan 0 dulu (total bayar = nominal dasar persis);
+// kalau tabrakan dengan payment pending lain, fallback fee acak
+// UNIQUE_FEE_MIN..UNIQUE_FEE_MAX. Final amount di-reservasi supaya tidak
+// tabrakan antar payment pending dengan nominal dasar yang sama.
 const UNIQUE_FEE_MIN = 1;
 const UNIQUE_FEE_MAX = 150;
 const UNIQUE_FEE_MAX_ATTEMPTS = 20;
@@ -308,19 +308,19 @@ async function findApikeyByEmail(email) {
 }
 
 async function allocateUniqueFee(baseAmount, expiryMs = PAYMENT_EXPIRY_MS) {
-  // Fee acak 1-150 (crypto.randomInt, batas atas eksklusif → +1).
-  // Kalau final amount sudah ter-reservasi dan masih aktif, acak ulang
-  // sampai max percobaan; kalau tetap tidak dapat → null (429
+  // Usahakan fee 0 dulu: total bayar = nominal dasar persis.
+  // Baru kalau nominal itu sudah ter-reservasi dan masih aktif, fallback
+  // ke fee acak 1-150 (crypto.randomInt, batas atas eksklusif → +1),
+  // acak ulang sampai max percobaan; kalau tetap tidak dapat → null (429
   // UNIQUE_AMOUNT_UNAVAILABLE di pemanggil).
-  for (let attempt = 0; attempt < UNIQUE_FEE_MAX_ATTEMPTS; attempt++) {
-    const fee = crypto.randomInt(UNIQUE_FEE_MIN, UNIQUE_FEE_MAX + 1);
+  const tryFee = async (fee) => {
     const finalAmount = baseAmount + ACTUAL_FEE_ADMIN + fee;
     const existing = await store.getReservation(finalAmount);
     const expired =
       !existing ||
       !existing.expires_at ||
       new Date(existing.expires_at).getTime() <= Date.now();
-    if (existing && !expired) continue; // masih aktif → nominal ini dipakai
+    if (existing && !expired) return null; // masih aktif → nominal ini dipakai
     await store.setReservation(finalAmount, {
       amount: finalAmount,
       base_amount: baseAmount,
@@ -329,6 +329,14 @@ async function allocateUniqueFee(baseAmount, expiryMs = PAYMENT_EXPIRY_MS) {
       expires_at: new Date(Date.now() + expiryMs).toISOString(),
     });
     return { finalAmount, uniqueFee: fee, feeAdmin: ACTUAL_FEE_ADMIN };
+  };
+
+  const zero = await tryFee(0);
+  if (zero) return zero;
+  for (let attempt = 0; attempt < UNIQUE_FEE_MAX_ATTEMPTS; attempt++) {
+    const fee = crypto.randomInt(UNIQUE_FEE_MIN, UNIQUE_FEE_MAX + 1);
+    const alloc = await tryFee(fee);
+    if (alloc) return alloc;
   }
   return null;
 }
